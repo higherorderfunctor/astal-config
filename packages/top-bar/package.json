@@ -1,0 +1,21 @@
+{
+  "name": "@astal-config/top-bar",
+  "version": "0.0.0",
+  "description": "Astal Top Bar",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rollup-build --tsconfig ./tsconfig.build.json --bundle topbar"
+  },
+  "dependencies": {
+    "effect": "*"
+  },
+  "devDependencies": {
+    "@types/astal__battery": "link:../../vendor/@types/astal__battery",
+    "@types/astal__hyprland": "link:../../vendor/@types/astal__hyprland",
+    "@types/astal__mpris": "link:../../vendor/@types/astal__mpris",
+    "@types/astal__network": "link:../../vendor/@types/astal__network",
+    "@types/astal__tray": "link:../../vendor/@types/astal__tray",
+    "@types/astal__wp": "link:../../vendor/@types/astal__wp"
+  }
+}

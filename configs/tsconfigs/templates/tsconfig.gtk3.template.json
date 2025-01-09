@@ -1,0 +1,12 @@
+{
+  "extends": ["../../../tsconfig.base.json"],
+  "include": ["${configDir}/src"],
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "astal/gtk3",
+    "types": ["@girs/gjs", "@girs/dom"],
+    "outDir": "${configDir}/dist/src",
+    "rootDir": "${configDir}/src",
+    "tsBuildInfoFile": "${configDir}/.tsbuildinfo/src.tsbuildinfo"
+  }
+}

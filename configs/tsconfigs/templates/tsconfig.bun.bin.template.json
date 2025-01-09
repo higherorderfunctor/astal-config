@@ -1,0 +1,10 @@
+{
+  "extends": ["../../../tsconfig.base.json"],
+  "include": ["${configDir}/bin"],
+  "compilerOptions": {
+    "types": ["bun"],
+    "outDir": "${configDir}/dist/bin",
+    "rootDir": "${configDir}/bin",
+    "tsBuildInfoFile": "${configDir}/.tsbuildinfo/bin.tsbuildinfo"
+  }
+}

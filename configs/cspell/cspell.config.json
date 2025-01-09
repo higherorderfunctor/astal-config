@@ -1,0 +1,42 @@
+{
+  "language": "en-US",
+  "files": [
+    "**/*.cjs",
+    "**/*.cjsx",
+    "**/*.cts",
+    "**/*.ctsx",
+    "**/*.js",
+    "**/*.jsx",
+    "**/*.json",
+    "**/*.json5",
+    "**/*.jsonc",
+    "**/*.md",
+    "**/*.mjs",
+    "**/*.mjsx",
+    "**/*.mts",
+    "**/*.mtsx",
+    "**/*.nix",
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "ignorePaths": ["**/node_modules/**", "**/dist/**", "../../vendor/**"],
+  "caseSensitive": true,
+  "overrides": [
+    {
+      "filename": "**/tsconfig.json",
+      "caseSensitive": false
+    },
+    {
+      "filename": "**/tsconfig.*.json",
+      "caseSensitive": false
+    }
+  ],
+  "dictionaries": ["en_US", "node", "typescript", "custom-words"],
+  "dictionaryDefinitions": [
+    {
+      "name": "custom-words",
+      "path": "./custom-words.txt",
+      "addWords": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@types/eslint-config-airbnb-typescript",
+  "version": "0.0.0",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": "./index.d.ts",
+    "./base": "./index.d.ts",
+    "./lib/shared": "./index.d.ts"
+  },
+  "dependencies": {
+    "@typescript-eslint/utils": "*"
+  }
+}

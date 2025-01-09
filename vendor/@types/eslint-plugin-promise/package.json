@@ -1,0 +1,8 @@
+{
+  "name": "@types/eslint-plugin-promise",
+  "version": "0.0.0",
+  "types": "./index.d.ts",
+  "dependencies": {
+    "@typescript-eslint/utils": "*"
+  }
+}
