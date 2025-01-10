@@ -1,0 +1,89 @@
+diff --git a/lib/types.d.ts b/lib/types.d.ts
+index f7df7352090c163173c4d91d16c8ee7b1e487127..526834fb7cf149876599cba9239ae6822be27b0c 100644
+--- a/lib/types.d.ts
++++ b/lib/types.d.ts
+@@ -24,7 +24,7 @@ export type TsResolverOptions = {
+     project?: string[] | string;
+     extensions?: string[];
+ } & Omit<ResolveOptions, 'fileSystem' | 'useSyncFileSystemCalls'>;
+-export type NewResolverResolve = (modulePath: string, sourceFile: string) => ResolvedResult;
++export type NewResolverResolve = (modulePath: string, sourceFile: string, context: RuleContext) => ResolvedResult;
+ export type NewResolver = {
+     interfaceVersion: 3;
+     name?: string;
+@@ -84,6 +84,7 @@ export type ChildContext = {
+     settings: PluginSettings;
+     parserPath?: string | null;
+     parserOptions?: TSESLint.ParserOptions;
++    sourceCode?: TSESLint.SourceCode;
+     languageOptions?: TSESLint.FlatConfig.LanguageOptions;
+     path: string;
+     filename?: string;
+diff --git a/lib/utils/export-map.js b/lib/utils/export-map.js
+index 711b38c58ef4c3f2bcd262f92f9641ed61faf6ab..224a5b64e089f973ceeba6ae7716b433dcd4eee7 100644
+--- a/lib/utils/export-map.js
++++ b/lib/utils/export-map.js
+@@ -143,7 +143,7 @@ class ExportMap {
+         }
+         const namespaces = new Map();
+         function remotePath(value) {
+-            return (0, resolve_1.relative)(value, filepath, context.settings);
++            return (0, resolve_1.relative)(value, filepath, context);
+         }
+         function resolveImport(value) {
+             const rp = remotePath(value);
+@@ -750,12 +750,13 @@ function recursivePatternCapture(pattern, callback) {
+     }
+ }
+ function childContext(path, context) {
+-    const { settings, parserOptions, parserPath, languageOptions } = context;
++    const { settings, parserOptions, parserPath, sourceCode, languageOptions } = context;
+     return {
+         cacheKey: makeContextCacheKey(context) + path,
+         settings,
+         parserOptions,
+         parserPath,
++        sourceCode,
+         languageOptions,
+         path,
+         filename: 'physicalFilename' in context
+diff --git a/lib/utils/resolve.js b/lib/utils/resolve.js
+index 4f2acefdf8616217b999891511b1d4d818fa9c13..4a0f7bbb11b5ee4bfad2410a120cd8f41ee0146e 100644
+--- a/lib/utils/resolve.js
++++ b/lib/utils/resolve.js
+@@ -67,7 +67,8 @@ function isValidNewResolver(resolver) {
+     }
+     return true;
+ }
+-function fullResolve(modulePath, sourceFile, settings) {
++function fullResolve(modulePath, sourceFile, context) {
++    const settings = context.settings;
+     const coreSet = new Set(settings['import-x/core-modules']);
+     if (coreSet.has(modulePath)) {
+         return {
+@@ -99,7 +100,7 @@ function fullResolve(modulePath, sourceFile, settings) {
+                 err.name = exports.IMPORT_RESOLVE_ERROR_NAME;
+                 throw err;
+             }
+-            const resolved = resolver.resolve(modulePath, sourceFile);
++            const resolved = resolver.resolve(modulePath, sourceFile, context);
+             if (!resolved.found) {
+                 continue;
+             }
+@@ -126,13 +127,13 @@ function fullResolve(modulePath, sourceFile, settings) {
+     }
+     return { found: false };
+ }
+-function relative(modulePath, sourceFile, settings) {
+-    return fullResolve(modulePath, sourceFile, settings).path;
++function relative(modulePath, sourceFile, context) {
++    return fullResolve(modulePath, sourceFile, context).path;
+ }
+ const erroredContexts = new Set();
+ function resolve(p, context) {
+     try {
+-        return relative(p, context.physicalFilename, context.settings);
++        return relative(p, context.physicalFilename, context);
+     }
+     catch (error_) {
+         const error = error_;

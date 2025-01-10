@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 import { FileSystem, Path } from '@effect/platform';
 import { BunContext } from '@effect/platform-bun';
 import type { TSESLint } from '@typescript-eslint/utils';

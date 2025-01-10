@@ -3,3 +3,9 @@ tseslint
 
 # astal
 astal
+
+# effect
+Inspectable
+
+# gnome
+girs

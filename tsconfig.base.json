@@ -39,6 +39,9 @@
         "name": "@effect/language-service"
       }
     ],
-    "paths": {}
+    "paths": {
+      "@astal-config/eslint-plugin": ["./packages/eslint-plugin"],
+      "@astal-config/girs-fixup": ["./packages/girs-fixup"]
+    }
   }
 }

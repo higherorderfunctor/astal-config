@@ -8,7 +8,7 @@
     "build": "rollup-build --tsconfig ./tsconfig.build.json --bundle topbar"
   },
   "dependencies": {
-    "effect": "*"
+    "effect": "3.12.1"
   },
   "devDependencies": {
     "@types/astal__battery": "link:../../vendor/@types/astal__battery",

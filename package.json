@@ -9,10 +9,10 @@
     "packages/*"
   ],
   "packageManager": "pnpm@9.15.3",
-  "engines": {
-    "pnpm": "9.15.3"
-  },
   "pnpm": {
+    "patchedDependencies": {
+      "eslint-plugin-import-x@4.6.1": "patches/eslint-plugin-import-x@4.6.1.patch"
+    },
     "overrides": {
       "@effect/cli": "$@effect/cli",
       "@effect/opentelemetry": "$@effect/opentelemetry",
@@ -33,6 +33,7 @@
       "@typescript-eslint/visitor-keys": "$typescript-eslint",
       "effect": "$effect",
       "eslint": "$eslint",
+      "eslint-plugin-import-x": "$eslint-plugin-import-x",
       "jiti": "$jiti",
       "typescript": "$typescript",
       "typescript-eslint": "$typescript-eslint"
@@ -44,44 +45,43 @@
     "clean:node_modules": "find . -name node_modules -print0 | xargs -0 rm -rf",
     "cspell": "FORCE_COLOR=1 pnpm exec cspell --color -c ./configs/cspell/cspell.config.json",
     "eslint": "TIMING=1 pnpm exec eslint --cache --flag unstable_ts_config",
+    "gen-types": "ags types 'Astal*' -d vendor/@types",
     "lint:eslint": "GITLAB_CI=1 pnpm eslint",
     "lint:spellcheck": "pnpm cspell",
     "lint:tsc": "tsc -b",
-    "outdated": "pnpm -r outdated",
-    "gen-types": "ags types 'Astal*' -d vendor/@types"
+    "outdated": "pnpm -r outdated"
   },
   "dependencies": {
-    "@effect/cli": "0.49.7",
-    "@effect/opentelemetry": "0.41.3",
-    "@effect/platform": "0.70.7",
-    "@effect/platform-bun": "0.50.7",
-    "@effect/platform-node": "0.65.7",
-    "@effect/platform-node-shared": "0.20.7",
-    "@effect/printer": "0.39.5",
-    "@effect/printer-ansi": "0.39.5",
-    "@effect/typeclass": "0.30.5",
-    "effect": "3.11.5"
+    "@effect/cli": "0.51.1",
+    "@effect/opentelemetry": "0.42.1",
+    "@effect/platform": "0.72.1",
+    "@effect/platform-bun": "0.52.1",
+    "@effect/platform-node": "0.68.1",
+    "@effect/platform-node-shared": "0.22.1",
+    "@effect/printer": "0.40.1",
+    "@effect/printer-ansi": "0.40.1",
+    "@effect/typeclass": "0.31.1",
+    "effect": "3.12.1"
   },
   "devDependencies": {
     "@astal-config/eslint-plugin": "workspace:*",
     "@astal-config/girs-fixup": "workspace:*",
     "@effect/language-service": "0.2.0",
     "@jsr/unplugin__isolated-decl": "0.10.4",
-    "@types/bun": "1.1.14",
-    "@types/girs__dom": "link:./vendor/@types/girs__dom",
-    "@types/girs__gjs": "link:./vendor/@types/girs__gjs",
-    "@types/node": "22.10.2",
-    "@vtsls/language-server": "0.2.6",
+    "@types/bun": "1.1.16",
+    "@types/girs__dom": "link:vendor/@types/girs__dom",
+    "@types/girs__gjs": "link:vendor/@types/girs__gjs",
     "astal": "github:Aylur/astal#path:/lang/gjs",
     "esbuild": "0.24.2",
-    "madge": "8.0.0",
     "eslint": "9.17.0",
+    "eslint-plugin-import-x": "4.6.1",
     "jiti": "2.4.2",
+    "madge": "8.0.0",
     "prettier": "3.4.2",
     "rimraf": "6.0.1",
     "tsx": "4.19.2",
-    "typescript": "5.7.2",
-    "typescript-eslint": "8.19.0"
+    "typescript": "5.7.3",
+    "typescript-eslint": "8.19.1"
   },
   "prettier": {
     "semi": true,
@@ -99,15 +99,11 @@
     ],
     "fileExtensions": [
       "cjs",
-      "cjsx",
       "cts",
-      "ctsx",
       "js",
       "jsx",
       "mjs",
-      "mjsx",
       "mts",
-      "mtsx",
       "ts",
       "tsx"
     ],

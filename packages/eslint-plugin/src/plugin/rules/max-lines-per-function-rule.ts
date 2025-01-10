@@ -2,6 +2,7 @@ import type { TSESLint, TSESTree } from '@typescript-eslint/utils';
 import { ESLintUtils } from '@typescript-eslint/utils';
 
 // @ts-expect-error package doesn't directly export
+// eslint-disable-next-line import-x/no-relative-packages
 import maxLinesPerFunction from '../../../node_modules/eslint/lib/rules/max-lines-per-function.js';
 
 export * as U from '@typescript-eslint/utils';

@@ -6,11 +6,6 @@ import { Either, flow } from 'effect';
 import type * as importX from 'eslint-plugin-import-x/types.js';
 import ts from 'typescript';
 
-declare global {
-  // eslint-disable-next-line vars-on-top, no-var
-  var TSSERVER_PROJECT_SERVICE: { service: ts.server.ProjectService } | null;
-}
-
 const logInfo = debug('tsserver-resolver:resolver:info');
 const logError = debug('tsserver-resolver:resolver:error');
 const logTrace = debug('tsserver-resolver:resolver:trace');
@@ -52,45 +47,40 @@ const fail: <T extends Array<unknown>>(
 export const success: (path: string) => importX.ResultFound = (path) => ({ found: true, path });
 
 /**
- * Get a `ProjectService` instance.
+ * Get the `CompilerOptions` from the `RuleContext`.
  */
-const getProjectService: () => Either.Either<ts.server.ProjectService, importX.ResultNotFound> = () =>
-  Either.fromNullable(
-    globalThis.TSSERVER_PROJECT_SERVICE.service,
-    fail(() => ['No project service found']),
-  );
-
-/**
- * Get the `Project` for a given file from a `ProjectService`.
- */
-const getProject: (options: { file: string }) => Either.Either<ts.server.Project, importX.ResultNotFound> = flow(
+const getCompilerOptions: (options: {
+  context: importX.ChildContext | importX.RuleContext;
+  file: string;
+}) => Either.Either<ts.CompilerOptions, importX.ResultNotFound> = flow(
   Either.right,
-  logRight(({ file }) => ['Getting project:', file], logTrace),
-  Either.bind('projectService', getProjectService),
-  // Either.bind('clientFile', openClientFile),
-  Either.bind('project', ({ file, projectService }) =>
+  logRight(({ context, file }) => ['Getting compiler options:', file, context], logTrace),
+  Either.bind('compilerOptions', ({ context, file }) =>
     Either.fromNullable(
-      projectService.getDefaultProjectForFile(ts.server.toNormalizedPath(file), false),
-      fail(() => ['No project found:', file] as const),
+      context.sourceCode?.parserServices?.program?.getCompilerOptions(),
+      fail(() => ['No compiler options found:', file] as const),
     ),
   ),
-  logRight(({ file, project }) => ['Found project:', { file, project: project.getProjectName() }], logTrace),
-  Either.map(({ project }) => project),
+  logRight(({ file }) => ['Found compiler options:', { file }], logTrace),
+  Either.map(({ compilerOptions }) => compilerOptions),
 );
 
 /**
  * Get the `Program` for a given `Project`.
  */
-const getProgram: (options: { project: ts.server.Project }) => Either.Either<ts.Program, importX.ResultNotFound> = flow(
+const getProgram: (options: {
+  context: importX.ChildContext | importX.RuleContext;
+  file: string;
+}) => Either.Either<ts.Program, importX.ResultNotFound> = flow(
   Either.right,
-  logRight(({ project }) => ['Getting program:', { project: project.getProjectName() }], logTrace),
-  Either.bind('program', ({ project }) =>
+  logRight(({ file }) => ['Getting program:', { file }], logTrace),
+  Either.bind('program', ({ context }) =>
     Either.fromNullable(
-      project.getLanguageService().getProgram(),
+      context.sourceCode?.parserServices?.program,
       fail(() => ['No program found']),
     ),
   ),
-  logRight(({ project }) => ['Found program:', { project: project.getProjectName() }], logTrace),
+  logRight(({ file }) => ['Found program:', { file }], logTrace),
   Either.map(({ program }) => program),
 );
 
@@ -132,22 +122,23 @@ const getTypeChecker: (options: { program: ts.Program }) => Either.Either<ts.Typ
  * Resolve a module.
  */
 export const resolveModule: (options: {
+  context: importX.ChildContext | importX.RuleContext;
   file: string;
   source: string;
 }) => Either.Either<importX.ResultFound, importX.ResultNotFound> = flow(
   Either.right,
-  Either.bind('project', getProject),
-  logRight(({ file, project, source }) => ['Resolving module:', { file, project: project.getProjectName(), source }]),
-  Either.bind('resolvedModule', ({ file, project, source }) => {
-    const { resolvedModule } = ts.resolveModuleName(source, file, project.getCompilerOptions(), ts.sys);
+  Either.bind('compilerOptions', getCompilerOptions),
+  logRight(({ file, source }) => ['Resolving module:', { file, source }]),
+  Either.bind('resolvedModule', ({ compilerOptions, file, source }) => {
+    const { resolvedModule } = ts.resolveModuleName(source, file, compilerOptions, ts.sys);
     return Either.fromNullable(
       resolvedModule,
-      fail(() => ['No module found:', { file, project: project.getProjectName(), source }]),
+      fail(() => ['No module found:', { file, source }]),
     );
   }),
-  logRight(({ file, project, resolvedModule, source }) => [
+  logRight(({ file, resolvedModule, source }) => [
     'Resolved module:',
-    { file, path: resolvedModule.resolvedFileName, project: project.getProjectName(), source },
+    { file, path: resolvedModule.resolvedFileName, source },
   ]),
   Either.map(({ resolvedModule }) => success(resolvedModule.resolvedFileName)),
 );
@@ -156,30 +147,23 @@ export const resolveModule: (options: {
  * Resolve a type reference.
  */
 export const resolveTypeReference: (options: {
+  context: importX.ChildContext | importX.RuleContext;
   file: string;
   source: string;
 }) => Either.Either<importX.ResultFound, importX.ResultNotFound> = flow(
   Either.right,
-  Either.bind('project', getProject),
-  logRight(({ file, project, source }) => [
-    'Resolving type reference directive:',
-    { file, project: project.getProjectName(), source },
-  ]),
-  Either.bind('resolvedTypeReferenceDirective', ({ file, project, source }) => {
-    const { resolvedTypeReferenceDirective } = ts.resolveTypeReferenceDirective(
-      source,
-      file,
-      project.getCompilerOptions(),
-      ts.sys,
-    );
+  logRight(({ file, source }) => ['Resolving type reference directive:', { file, source }]),
+  Either.bind('compilerOptions', getCompilerOptions),
+  Either.bind('resolvedTypeReferenceDirective', ({ compilerOptions, file, source }) => {
+    const { resolvedTypeReferenceDirective } = ts.resolveTypeReferenceDirective(source, file, compilerOptions, ts.sys);
     return Either.fromNullable(
       resolvedTypeReferenceDirective?.resolvedFileName,
-      fail(() => ['No type reference directive found:', { file, project: project.getProjectName(), source }]),
+      fail(() => ['No type reference directive found:', { file, source }]),
     );
   }),
-  logRight(({ file, project, resolvedTypeReferenceDirective, source }) => [
+  logRight(({ file, resolvedTypeReferenceDirective, source }) => [
     'Resolved type reference directive:',
-    { file, path: resolvedTypeReferenceDirective, project: project.getProjectName(), source },
+    { file, path: resolvedTypeReferenceDirective, source },
   ]),
   Either.map(({ resolvedTypeReferenceDirective }) => success(resolvedTypeReferenceDirective)),
 );
@@ -188,12 +172,12 @@ export const resolveTypeReference: (options: {
  * Resolve an ambient module.
  */
 export const resolveAmbientModule: (options: {
+  context: importX.ChildContext | importX.RuleContext;
   file: string;
   source: string;
 }) => Either.Either<importX.ResultFound, importX.ResultNotFound> = flow(
   Either.right,
   logRight(({ file, source }) => ['Resolving ambient module:', { file, source }]),
-  Either.bind('project', getProject),
   Either.bind('program', getProgram),
   Either.bind('sourceFile', getSourceFile),
   Either.bind('typeChecker', getTypeChecker),
@@ -207,9 +191,9 @@ export const resolveAmbientModule: (options: {
       fail(() => ['No ambient module found:', { file, source }]),
     ),
   ),
-  logRight(({ file, project, resolvedAmbientModule, source }) => [
+  logRight(({ file, resolvedAmbientModule, source }) => [
     'Resolved ambient module:',
-    { file, project: project.getProjectName(), resolvedAmbientModule, source },
+    { file, resolvedAmbientModule, source },
   ]),
   Either.map(({ resolvedAmbientModule }) => success(resolvedAmbientModule)),
 );
@@ -245,9 +229,12 @@ export const resolveFallbackRelativePath: (options: {
 export const tsserverResolver: importX.NewResolver = {
   interfaceVersion: 3,
   name: 'tsserver-resolver',
-  resolve: (source: string, file: string): importX.ResolvedResult =>
-    Either.right({ file, source }).pipe(
-      // Either.bind('clientFile', openClientFile),
+  resolve: (
+    source: string,
+    file: string,
+    context: importX.ChildContext | importX.RuleContext,
+  ): importX.ResolvedResult =>
+    Either.right({ context, file, source }).pipe(
       Either.flatMap((options) =>
         resolveModule(options).pipe(
           Either.orElse(() => resolveTypeReference(options)),
@@ -270,7 +257,7 @@ export const settings = {
   'import-x/internal-regex': '^@astal-config/',
   // maps extensions to parsers
   'import-x/parsers': {
-    '@typescript-eslint/parser': ['.ts', '.cts', '.mts', '.tsx', '.js', '.cjs', '.mjs', '.jsx'],
+    '@typescript-eslint/parser': ['.cjs', '.cts', '.js', '.jsx', '.mjs', '.mts', '.ts', '.tsx'],
   },
   // how to perform import lookups
   'import-x/resolver-next': [tsserverResolver],

@@ -1,5 +1,4 @@
 import cspellRecommended from '@cspell/eslint-plugin/recommended';
-import { fixupPluginRules } from '@eslint/compat';
 import eslint from '@eslint/js';
 import * as stylisticPlugin from '@stylistic/eslint-plugin';
 import type { TSESLint } from '@typescript-eslint/utils';
@@ -28,7 +27,7 @@ export const plugins: TSESLint.FlatConfig.Plugins = {
   '@typescript-eslint': tseslint.plugin,
   astal: astalPlugin,
   codegen: codegenPlugin,
-  'prefer-arrow-functions': fixupPluginRules(preferArrowFunctionsPlugin),
+  'prefer-arrow-functions': preferArrowFunctionsPlugin.default,
   prettier: prettierPlugin,
   promise: promisePlugin,
   'sort-destructure-keys': sortDestructureKeysPlugin,

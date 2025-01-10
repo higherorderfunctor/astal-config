@@ -1,95 +1,144 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/refs/heads/main/npm/oxlint/configuration_schema.json",
   "plugins": ["import", "jsdoc", "n", "oxc", "promise", "typescript", "unicorn", "vitest"],
-  "env": {
-    "es2024": true,
-  },
-  "files": ["*.[cm]js", "*.[cm]ts", "*.js", "*.ts", "packages/**/*.ts"],
-  "ignorePatterns": [
-    "**/.mypy_cache/**/*", // python type checking cache
-    "**/.rollup-cache/**/*", // rollup cache
-    "**/.venv/**/*", // python virtual environment
-    "**/.vscode/**/*", // vscode settings
-    "**/.vuepress/**/*", // vuepress generated files
-    "**/node_modules/**/*", // node dependencies
-    ".changeset/**/*", // changeset files
-    ".direnv/**/*", // direnv virtual environment dependencies
-    ".oxlintrc.json", // symlinked to jsonc with diff rules that conflict
-    ".tmp/**/*", // in repo temp files
-    "build/**/*", // build artifacts
-    "docs/c4/**/*", // c4 generated files
-    "etc/bruno/**/*", // bruno generated configs
-    "etc/postman/**/*", // postman generated configs
-    "nix/overlays/.nvfetcher/**/*", // nix generated configs
-    "packages/**/dist/**/*", // build artifacts
-    "packages/core/eslint-plugin/lib/**/*.{js,js.map,d.ts,d.ts.map}", // generated files
-    "results/**/*", // nix build artifacts
+  "files": [
+    "**/*.cjs",
+    "**/*.cts",
+    "**/*.js",
+    "**/*.json",
+    "**/*.json5",
+    "**/*.jsonc",
+    "**/*.jsx",
+    "**/*.mjs",
+    "**/*.mts",
+    "**/*.ts",
+    "**/*.tsx",
   ],
+  "ignorePatterns": [
+    "**/.rollup-cache/**/*", // rollup cache
+    "**/node_modules/**/*", // node dependencies
+    "packages/*/dist/**/*", // build artifacts
+  ],
+  "env": { "node": true },
   "settings": {},
   "categories": {
     "correctness": "error",
     "nursery": "error",
     "pedantic": "error",
     "perf": "error",
-    "restriction": "error",
+    // "restriction": "error", WARN: do not uncomment
     "style": "error",
     "suspicious": "error",
   },
   "rules": {
-    // eslint
+    /** ESLint */
     "eslint/func-names": "off",
     "eslint/max-dependencies": "off",
-    "eslint/no-console": "warn",
     "eslint/no-duplicate-imports": "off", // doesn't play well with split type imports
     "eslint/no-magic-numbers": "off",
     "eslint/no-namespace": "off",
     "eslint/no-redeclare": "off",
     "eslint/no-ternary": "off",
-    "eslint/no-undefined": "off",
     "eslint/sort-imports": "off",
     "eslint/switch-case-braces": "off",
     "eslint/yoda": "off",
-    // jest
+    /** Jest */
     "jest/require-hook": "off",
-    // jsdoc
+    /** JSDoc */
     "jsdoc/check-tag-names": ["error", { "definedTags": ["remarks", "privateRemarks"] }],
     "jsdoc/no-defaults": "off",
     "jsdoc/require-param": "warn",
     "jsdoc/require-returns": "warn",
-    // import
-    "import/no-default-export": "off",
+    /** Import */
     "import/max-dependencies": "off",
-    // oxc
+    /** Promise */
+    "promise/prefer-await-to-callbacks": "off",
+    "promise/prefer-await-to-then": "off",
+    /** Typescript */
+    "typescript/array-type": ["error", { "default": "generic" }],
+    "typescript/consistent-indexed-object-style": "off",
+    // doesn't work with types from effect schemas where interface is desirable
+    "typescript/no-empty-interface": "off",
+    // doesn't report correctly with namespaces containing functions
+    /** Unicorn */
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/filename-case": ["error", { "cases": { "snakeCase": true, "camelCase": true, "pascalCase": true } }],
+    "unicorn/no-null": "warn",
+    /** Category: Restriction
+     * Source: https://oxc.rs/docs/guide/usage/linter/rules.html#restriction-63
+     * Cannot enable the category as won't be able to disable the rules.
+     */
+    // Use the following regex to regen from the table:
+    // s/\v([^  ]+) ([^ ]+).*/"\2\/\1": "error",/
+
+    // disabled restrictions
+    "eslint/no-undefined": "off",
+    "import/no-default-export": "off",
     "oxc/no-async-await": "off",
     "oxc/no-barrel-file": "off",
     "oxc/no-optional-chaining": "off",
     "oxc/no-rest-spread-properties": "off",
-    // promise
-    // TODO: reconcile
-    "promise/prefer-await-to-callbacks": "off",
-    "promise/prefer-await-to-then": "off",
     "promise/catch-or-return": "off",
-    // typescript
-    "typescript/array-type": ["error", { "default": "generic" }],
-    "typescript/consistent-indexed-object-style": "off",
+    /** Typescript */
     "typescript/explicit-function-return-type": "off",
+    // doesn't work with types from effect schemas where interface is desirable
+    "typescript/no-empty-object-type": "off",
+    // used to add "static" members to types
     "typescript/no-namespace": "off",
-    // unicorn
-    "unicorn/consistent-function-scoping": "off",
-    "unicorn/filename-case": "off",
-    "unicorn/no-null": "off",
+    // enabled restrictions
+    "eslint/default-case": "error",
+    "eslint/no-alert": "error",
+    "eslint/no-bitwise": "error",
+    "eslint/no-console": "error",
+    "eslint/no-div-regex": "error",
+    "eslint/no-empty": "error",
+    "eslint/no-empty-function": "error",
+    "eslint/no-eq-null": "error",
+    "eslint/no-eval": "error",
+    "eslint/no-iterator": "error",
+    "eslint/no-plusplus": "error",
+    "eslint/no-proto": "error",
+    "eslint/no-regex-spaces": "error",
+    "eslint/no-restricted-globals": "error",
+    "eslint/no-unused-expressions": "error",
+    "eslint/no-var": "error",
+    "eslint/no-void": "error",
+    "eslint/unicode-bom": "error",
+    "import/no-amd": "error",
+    "import/no-commonjs": "error",
+    "import/no-cycle": "error",
+    "import/no-dynamic-require": "error",
+    "import/no-webpack-loader-syntax": "error",
+    "import/unambiguous": "error",
+    "jsdoc/check-access": "error",
+    "jsdoc/empty-tags": "error",
+    "jsx_a11y/anchor-ambiguous-text": "error",
+    "node/no-new-require": "error",
+    "oxc/bad-bitwise-operator": "error",
+    "oxc/no-const-enum": "error",
+    "promise/spec-only": "error",
+    "react/button-has-type": "error",
+    "react/no-danger": "error",
+    "react/no-unknown-property": "error",
+    /** Typescript */
+    "typescript/no-dynamic-delete": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-import-type-side-effects": "error",
+    "typescript/no-non-null-asserted-nullish-coalescing": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/no-var-requires": "error",
+    "typescript/prefer-literal-enum-member": "error",
+    "unicorn/no-abusive-eslint-disable": "error",
+    "unicorn/no-anonymous-default-export": "error",
+    "unicorn/no-array-for-each": "error",
+    "unicorn/no-array-reduce": "error",
+    "unicorn/no-length-as-slice-end": "error",
+    "unicorn/no-magic-array-flat-depth": "error",
+    "unicorn/no-nested-ternary": "error",
+    "unicorn/no-process-exit": "error",
+    "unicorn/prefer-modern-math-apis": "error",
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/prefer-number-properties": "error",
   },
-  "overrides": [
-    {
-      "files": ["*.test.ts"],
-      "rules": {
-        "no-magic-numbers": "off",
-      },
-    },
-    {
-      "files": ["./packages/client-portal/frontend/src/**/*"],
-      "plugins": ["import", "jsdoc", "oxc", "promise", "typescript", "unicorn"],
-      "env": { "browser": true },
-    },
-  ],
 }

@@ -1,9 +1,0 @@
-{
-  "name": "@types/eslint-plugin-prefer-arrow-function",
-  "version": "0.0.0",
-  "types": "./index.d.ts",
-  "dependencies": {
-    "@eslint/compat": "1.2.4",
-    "@typescript-eslint/utils": "*"
-  }
-}
