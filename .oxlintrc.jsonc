@@ -63,7 +63,8 @@
     /** Unicorn */
     "unicorn/consistent-function-scoping": "off",
     "unicorn/filename-case": ["error", { "cases": { "kebabCase": true, "camelCase": true, "pascalCase": true } }],
-    "unicorn/no-null": "warn",
+    // preference for multiple optional args
+    "unicorn/no-null": "off",
     /** Category: Restriction
      * Source: https://oxc.rs/docs/guide/usage/linter/rules.html#restriction-63
      * Cannot enable the category as won't be able to disable the rules.

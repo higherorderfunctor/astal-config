@@ -1,6 +1,7 @@
-import { HelpDoc, ValidationError } from '@effect/cli';
 import { Path } from '@effect/platform';
 import { Effect, ParseResult, pipe, Schema as S } from 'effect';
+
+import * as Error from './Error/index.js';
 
 export const PackageName = S.Struct({
   absolutePath: S.URLFromSelf,
@@ -11,29 +12,23 @@ export const PackageName = S.Struct({
 
 export interface PackageName extends S.Schema.Type<typeof PackageName> {}
 
-export const fromDts = (file: string): Effect.Effect<PackageName, ValidationError.ValidationError> =>
+export const fromDts = (file: string) =>
   Effect.Do.pipe(
     Effect.bind('path', () => Path.Path),
     Effect.bind('filename', ({ path }) => Effect.succeed(path.basename(file))),
     Effect.bind('absolutePath', ({ path }) => pipe(path.normalize(file), path.toFileUrl)),
-    Effect.flatMap(({ absolutePath, filename }) =>
-      S.decodeUnknown(PackageName)({
-        absolutePath,
-        .../^(?<scope>astal)?(?<module>.+)\.(?<ext>d\.ts)$/.exec(filename)?.groups,
-      }),
+    Effect.flatMap(
+      ({ absolutePath, filename }): Effect.Effect<PackageName, ParseResult.ParseError> =>
+        S.decodeUnknown(PackageName)({
+          absolutePath,
+          .../^(?<scope>astal)?(?<module>.+)\.(?<ext>d\.ts)$/.exec(filename)?.groups,
+        }),
     ),
-    (v) => v,
     Effect.catchTags({
-      BadArgument: (error) => 
-          HelpDoc.sequence(HelpDoc.p(`File: ${file}`), HelpDoc.p(error))),
-          // Effect.map(ValidationError.invalidValue),
-          // Effect.flip,
-        //),
+      BadArgument: ({ message, method, module }) => Error.invalidValue(message, { method, module }),
       ParseError: ({ issue }) =>
         ParseResult.TreeFormatter.formatIssue(issue).pipe(
-          Effect.map((error) => HelpDoc.sequence(HelpDoc.p(`File: ${file}`), HelpDoc.p(error))),
-          Effect.map(ValidationError.invalidValue),
-          Effect.flip,
+          Effect.flatMap((formatted) => Error.invalidValue('Parse error', { file }, formatted)),
         ),
     }),
   );
