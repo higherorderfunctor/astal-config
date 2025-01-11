@@ -62,7 +62,7 @@
     // doesn't report correctly with namespaces containing functions
     /** Unicorn */
     "unicorn/consistent-function-scoping": "off",
-    "unicorn/filename-case": ["error", { "cases": { "snakeCase": true, "camelCase": true, "pascalCase": true } }],
+    "unicorn/filename-case": ["error", { "cases": { "kebabCase": true, "camelCase": true, "pascalCase": true } }],
     "unicorn/no-null": "warn",
     /** Category: Restriction
      * Source: https://oxc.rs/docs/guide/usage/linter/rules.html#restriction-63
@@ -79,6 +79,8 @@
     "oxc/no-optional-chaining": "off",
     "oxc/no-rest-spread-properties": "off",
     "promise/catch-or-return": "off",
+    // anti-functional
+    "unicorn/no-array-reduce": "off",
     /** Typescript */
     "typescript/explicit-function-return-type": "off",
     // doesn't work with types from effect schemas where interface is desirable
@@ -132,7 +134,6 @@
     "unicorn/no-abusive-eslint-disable": "error",
     "unicorn/no-anonymous-default-export": "error",
     "unicorn/no-array-for-each": "error",
-    "unicorn/no-array-reduce": "error",
     "unicorn/no-length-as-slice-end": "error",
     "unicorn/no-magic-array-flat-depth": "error",
     "unicorn/no-nested-ternary": "error",

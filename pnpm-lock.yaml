@@ -92,7 +92,7 @@ importers:
         version: link:vendor/@types/girs__gjs
       astal:
         specifier: github:Aylur/astal#path:/lang/gjs
-        version: https://codeload.github.com/Aylur/astal/tar.gz/c5b219171cbab489b01087a372e24e3a719f6299#path:/lang/gjs
+        version: https://codeload.github.com/Aylur/astal/tar.gz/ef4f95608481414053ecdbe4de29bd86fb452813#path:/lang/gjs
       esbuild:
         specifier: 0.24.2
         version: 0.24.2
@@ -281,6 +281,9 @@ importers:
         specifier: 0.52.1
         version: 0.52.1(@effect/platform@0.72.1(effect@3.12.1))(effect@3.12.1)
       '@effect/printer':
+        specifier: 0.40.1
+        version: 0.40.1(@effect/typeclass@0.31.1(effect@3.12.1))(effect@3.12.1)
+      '@effect/printer-ansi':
         specifier: 0.40.1
         version: 0.40.1(@effect/typeclass@0.31.1(effect@3.12.1))(effect@3.12.1)
       effect:
@@ -1909,8 +1912,8 @@ packages:
     resolution: {integrity: sha512-LFRg7178Fw5R4FAEwZxVqiRI8IxSM+Ay2UBrHoCerXNme+kMMMfz7T3xDGV/c2fer87hcrtgJGsnSOfUrPK6ng==}
     engines: {node: '>=18'}
 
-  astal@https://codeload.github.com/Aylur/astal/tar.gz/c5b219171cbab489b01087a372e24e3a719f6299#path:/lang/gjs:
-    resolution: {path: /lang/gjs, tarball: https://codeload.github.com/Aylur/astal/tar.gz/c5b219171cbab489b01087a372e24e3a719f6299}
+  astal@https://codeload.github.com/Aylur/astal/tar.gz/ef4f95608481414053ecdbe4de29bd86fb452813#path:/lang/gjs:
+    resolution: {path: /lang/gjs, tarball: https://codeload.github.com/Aylur/astal/tar.gz/ef4f95608481414053ecdbe4de29bd86fb452813}
     version: 0.1.0
     engines: {gjs: '>=1.79.0'}
     os: [linux]
@@ -6027,7 +6030,7 @@ snapshots:
 
   ast-module-types@6.0.0: {}
 
-  astal@https://codeload.github.com/Aylur/astal/tar.gz/c5b219171cbab489b01087a372e24e3a719f6299#path:/lang/gjs: {}
+  astal@https://codeload.github.com/Aylur/astal/tar.gz/ef4f95608481414053ecdbe4de29bd86fb452813#path:/lang/gjs: {}
 
   available-typed-arrays@1.0.7:
     dependencies:

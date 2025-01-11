@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": ["../../../tsconfig.base.json"],
-  "include": ["${configDir}/bin/**/*.ts"],
+  "include": ["${configDir}/bin/**/*.ts", "${configDir}/package.json"],
   "compilerOptions": {
     "noEmit": true,
     "rootDir": "${configDir}",

@@ -5,7 +5,13 @@ tseslint
 astal
 
 # effect
+Ansi
 Inspectable
+hsep
+vsep
+
+# eslint
+codegen
 
 # gnome
 girs
