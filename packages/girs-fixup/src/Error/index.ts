@@ -2,9 +2,9 @@ import { HelpDoc, ValidationError } from '@effect/cli';
 import { Terminal } from '@effect/platform';
 import { Doc } from '@effect/printer';
 import { empty, hang, hsep, reflow, spaces, text, vsep } from '@effect/printer/Doc';
-import { Array, Effect, flow, Number, Option, pipe, Record, String } from 'effect';
+import { Array, Effect, flow, Inspectable, Number, Option, pipe, Predicate, Record, String } from 'effect';
 
-const toDoc = (message: string, props?: null | Record<string, string>, extra?: string) => {
+const toDoc = (message: string, props?: null | Record<string, unknown>, extra?: string) => {
   const maxKeyLength = pipe(Record.keys(props ?? {}), Array.map(String.length), Array.reduce(0, Number.max));
   return vsep(
     Array.getSomes([
@@ -13,9 +13,14 @@ const toDoc = (message: string, props?: null | Record<string, string>, extra?: s
       Option.fromNullable(props).pipe(
         Option.map(
           flow(
+            Record.filter((value) => Predicate.isNotUndefined(value)),
             Record.toEntries,
             Array.map(([key, value]) =>
-              Doc.hsep([spaces(maxKeyLength - key.length), text(`${key}:`), pipe(reflow(value), hang(0))]),
+              Doc.hsep([
+                spaces(maxKeyLength - key.length),
+                text(`${key}:`),
+                pipe(reflow(Inspectable.stringifyCircular(value, 2)), hang(0)),
+              ]),
             ),
             vsep,
           ),

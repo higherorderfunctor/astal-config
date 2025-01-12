@@ -1,19 +1,19 @@
 import type { Layer } from 'effect';
-import { Context, Effect, flow, HashSet, pipe, Runtime, SynchronizedRef } from 'effect';
+import { Effect, flow, HashSet, pipe, Runtime, SynchronizedRef } from 'effect';
 import type ts from 'typescript';
 
-export const Watchers = Context.GenericTag<
-  SynchronizedRef.SynchronizedRef<HashSet.HashSet<ts.FileWatcher>>,
-  SynchronizedRef.SynchronizedRef<HashSet.HashSet<ts.FileWatcher>>
->('Watchers');
+import * as FileWatcherSet from './FileWatcherSet.js';
 
+/**
+ * Stub implementation of `ts.FileWatcher`.
+ */
 const stub: ts.FileWatcher = {
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   close: () => {},
 };
 
-const close = (watcher: ts.FileWatcher) =>
-  Effect.flatMap(Watchers, (watchers) => SynchronizedRef.getAndUpdate(watchers, flow(HashSet.remove(watcher))));
+const removeFileWatcher = (watcher: ts.FileWatcher) =>
+  Effect.flatMap(FileWatcherSet.FileWatcherSet, (watchers) => SynchronizedRef.getAndUpdate(watchers, flow(HashSet.remove(watcher))));
 
 const watchDirectory = (
   _path: string,
@@ -23,10 +23,10 @@ const watchDirectory = (
 ) =>
   Effect.gen(function* () {
     const runSync = Runtime.runSync(yield* Effect.runtime());
-    const watchers = yield* Watchers;
+    const watchers = yield* FileWatcherSet.FileWatcherSet;
     const watcher: ts.FileWatcher = {
       // TODO: implement
-      close: () => pipe(close(watcher), Effect.provideService(Watchers, watchers), runSync),
+      close: () => pipe(removeFileWatcher(watcher), Effect.provideService(FileWatcherSet.FileWatcherSet, watchers), runSync),
     };
     yield* SynchronizedRef.getAndUpdate(watchers, flow(HashSet.add(watcher)));
     return watcher;
@@ -40,10 +40,10 @@ const watchFile = (
 ) =>
   Effect.gen(function* () {
     const runSync = Runtime.runSync(yield* Effect.runtime());
-    const watchers = yield* Watchers;
+    const watchers = yield* FileWatcherSet.FileWatcherSet;
     const watcher: ts.FileWatcher = {
       // TODO: implement
-      close: () => pipe(close(watcher), Effect.provideService(Watchers, watchers), runSync),
+      close: () => pipe(removeFileWatcher(watcher), Effect.provideService(FileWatcherSet.FileWatcherSet, watchers), runSync),
     };
     yield* SynchronizedRef.getAndUpdate(watchers, flow(HashSet.add(watcher)));
     return watcher;
@@ -55,8 +55,8 @@ export class FileWatcher extends Effect.Service<FileWatcher>()('FileWatcher', {
     const runtime = yield* Effect.runtime();
     const runSync = Runtime.runSync(runtime);
     const provideWatchers = Effect.provideService(
-      Watchers,
-      yield* SynchronizedRef.make(HashSet.empty<ts.FileWatcher>()),
+      FileWatcherSet.FileWatcherSet,
+      yield* FileWatcherSet.make(),
     );
 
     return {
