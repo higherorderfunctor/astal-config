@@ -82,6 +82,8 @@
     "promise/catch-or-return": "off",
     // anti-functional
     "unicorn/no-array-reduce": "off",
+    // anti-functional
+    "unicorn/no-array-for-each": "off",
     /** Typescript */
     "typescript/explicit-function-return-type": "off",
     // doesn't work with types from effect schemas where interface is desirable
@@ -134,7 +136,6 @@
     "typescript/prefer-literal-enum-member": "error",
     "unicorn/no-abusive-eslint-disable": "error",
     "unicorn/no-anonymous-default-export": "error",
-    "unicorn/no-array-for-each": "error",
     "unicorn/no-length-as-slice-end": "error",
     "unicorn/no-magic-array-flat-depth": "error",
     "unicorn/no-nested-ternary": "error",

@@ -65,7 +65,6 @@ const tsConfigLanguageOptions: TSESLint.FlatConfig.LanguageOptions = {
  */
 const tsConfig = astalPlugin.overrideWith([...astalPlugin.configs.strict, tsConfigOverrides], {
   files: ['*.[cm]js', '*.[cm]ts', '*.js', '*.ts', 'packages/**/*.ts'],
-  ignores: ['packages/client-portal/**/*'],
   languageOptions: tsConfigLanguageOptions,
 });
 

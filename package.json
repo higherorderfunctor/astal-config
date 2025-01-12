@@ -45,7 +45,7 @@
     "clean:node_modules": "find . -name node_modules -print0 | xargs -0 rm -rf",
     "cspell": "FORCE_COLOR=1 pnpm exec cspell --color -c ./configs/cspell/cspell.config.json",
     "eslint": "TIMING=1 pnpm exec eslint --cache --flag unstable_ts_config",
-    "gen-types": "ags types 'Astal*' -d vendor/@types",
+    "gen-types": "ags types 'Astal*' -d vendor",
     "lint:eslint": "GITLAB_CI=1 pnpm eslint",
     "lint:spellcheck": "pnpm cspell",
     "lint:tsc": "tsc -b",

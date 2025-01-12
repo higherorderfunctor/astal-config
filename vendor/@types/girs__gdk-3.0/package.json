@@ -1,0 +1,5 @@
+{
+  "name": "@types/girs__gdk-3.0",
+  "version": "0.0.0",
+  "types": "./index.d.ts"
+}

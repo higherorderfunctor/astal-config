@@ -1,0 +1,4 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": ["{{ relative dir (resolve dirname "../../tsconfigs/templates/tsconfig.typings.template.json") }}"]
+}
