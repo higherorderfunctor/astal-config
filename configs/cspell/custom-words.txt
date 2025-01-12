@@ -1,5 +1,5 @@
-# typescript-eslint
-tseslint
+# airbnb
+airbnb
 
 # astal
 astal
@@ -15,3 +15,10 @@ codegen
 
 # gnome
 girs
+
+# madge
+madge
+
+# typescript-eslint
+tseslint
+TSES

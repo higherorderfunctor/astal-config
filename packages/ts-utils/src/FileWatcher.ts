@@ -23,10 +23,9 @@ const watchDirectory = (
 ) =>
   Effect.gen(function* () {
     const runSync = Runtime.runSync(yield* Effect.runtime());
-    const watchers = yield* FileWatcherSet.FileWatcherSet;
     const watcher: ts.FileWatcher = {
       // TODO: implement
-      close: () => pipe(removeFileWatcher(watcher), Effect.provideService(FileWatcherSet.FileWatcherSet, watchers), runSync),
+      close: () => pipe(removeFileWatcher(watcher), FileWatcherSet.provide(), runSync),
     };
     yield* SynchronizedRef.getAndUpdate(watchers, flow(HashSet.add(watcher)));
     return watcher;
@@ -40,10 +39,10 @@ const watchFile = (
 ) =>
   Effect.gen(function* () {
     const runSync = Runtime.runSync(yield* Effect.runtime());
-    const watchers = yield* FileWatcherSet.FileWatcherSet;
+    const watchers = yield* FileWatcherSet.FileWatcherSet.Ref;
     const watcher: ts.FileWatcher = {
       // TODO: implement
-      close: () => pipe(removeFileWatcher(watcher), Effect.provideService(FileWatcherSet.FileWatcherSet, watchers), runSync),
+      close: () => pipe(removeFileWatcher(watcher), Effect.provideService(FileWatcherSet.FileWatcherSet.Ref, watchers), runSync),
     };
     yield* SynchronizedRef.getAndUpdate(watchers, flow(HashSet.add(watcher)));
     return watcher;
@@ -54,15 +53,10 @@ export class FileWatcher extends Effect.Service<FileWatcher>()('FileWatcher', {
   effect: Effect.gen(function* () {
     const runtime = yield* Effect.runtime();
     const runSync = Runtime.runSync(runtime);
-    const provideWatchers = Effect.provideService(
-      FileWatcherSet.FileWatcherSet,
-      yield* FileWatcherSet.make(),
-    );
+    const provideWatchers = FileWatcherSet.provide(FileWatcherSet.make());
 
     return {
-      close: flow(close, provideWatchers),
       stub: () => stub,
-      unsafeClose: flow(close, provideWatchers, runSync),
       unsafeWatchDirectory: flow(watchDirectory, provideWatchers, runSync),
       unsafeWatchFile: flow(watchFile, provideWatchers, runSync),
       watchDirectory: flow(watchDirectory, provideWatchers),
