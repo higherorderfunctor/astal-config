@@ -34,6 +34,7 @@
     /** ESLint */
     "eslint/func-names": "off",
     "eslint/max-dependencies": "off",
+    "eslint/max-params": "off",
     "eslint/no-duplicate-imports": "off", // doesn't play well with split type imports
     "eslint/no-magic-numbers": "off",
     "eslint/no-namespace": "off",

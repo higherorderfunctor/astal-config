@@ -11,6 +11,8 @@ import Handlebars from 'handlebars';
 
 import { Error, PackageName } from '@astal-config/girs-fixup';
 
+import { ProjectService } from '@astal-config/ts-utils';
+
 import packageJson from '../package.json' with { type: 'json' };
 
 /**
@@ -27,10 +29,9 @@ const ls: {
     options?: FileSystem.ReadDirectoryOptions,
   ): Effect.Effect<Array<string>, ValidationError.ValidationError, FileSystem.FileSystem | Terminal.Terminal>;
 } = Function.dual(
-  args => typeof args[0] === 'string',
+  (args) => typeof args[0] === 'string',
   Effect.functionWithSpan({
-    body:
-    (path: string, options?: FileSystem.ReadDirectoryOptions) =>
+    body: (path: string, options?: FileSystem.ReadDirectoryOptions) =>
       Effect.flatMap(FileSystem.FileSystem, (fs) =>
         fs
           .readDirectory(path, options)
@@ -125,24 +126,23 @@ const dest = Options.directory('dest', { exists: 'yes' }).pipe(
   ),
 );
 
-const parseDts =
-    Effect.functionWithSpan({
-      body: (girs: string) =>
-        pipe(
-           ls(girs),
-           Effect.flatMap((files) =>
-             Effect.gen(function* () {
-               const path = yield* Path.Path;
-               return Array.map(files, (file) => path.resolve(girs, file));
-             }),
-           ),
-           Effect.flatMap(
-             flow(Array.map(PackageName.fromDts), (effect) => Effect.all(effect, { concurrency: 'unbounded' })),
-           ),
-        ),
-      captureStackTrace: true,
-      options: { name: 'options-girs' },
-    });
+const parseDts = Effect.functionWithSpan({
+  body: (girs: string) =>
+    pipe(
+      ls(girs),
+      Effect.flatMap((files) =>
+        Effect.gen(function* () {
+          const path = yield* Path.Path;
+          return Array.map(files, (file) => path.resolve(girs, file));
+        }),
+      ),
+      Effect.flatMap(
+        flow(Array.map(PackageName.fromDts), (effect) => Effect.all(effect, { concurrency: 'unbounded' })),
+      ),
+    ),
+  captureStackTrace: true,
+  options: { name: 'options-girs' },
+});
 
 const girs = Options.directory('girs', { exists: 'yes' }).pipe(
   Options.withDefault(`${process.cwd()}/vendor/@girs`),
@@ -165,7 +165,9 @@ const applyTemplate = Effect.functionWithSpan({
   body: (dir: string, dts: PackageName.PackageName, scaffold: string) =>
     Effect.gen(function* () {
       const path = yield* Path.Path;
-      Handlebars.registerHelper('resolve', (...args: [...string[], options: Handlebars.HelperOptions]) => path.resolve(...args.slice(0, -1)));
+      Handlebars.registerHelper('resolve', (...args: [...Array<string>, options: Handlebars.HelperOptions]) =>
+        path.resolve(...args.slice(0, -1)),
+      );
       Handlebars.registerHelper('relative', (from: string, to: string) => path.relative(from, to));
       const files = Array.map(yield* ls(dir, { recursive: true }), (file) => path.resolve(dir, file));
       yield* Effect.all(
@@ -173,7 +175,7 @@ const applyTemplate = Effect.functionWithSpan({
           rewrite(file, (contents) => {
             const template = Handlebars.compile(contents);
             return template({
-              dir: dir,
+              dir,
               dirname: path.normalize(path.relative(process.cwd(), scaffold)), // TODO: better handling for dirs in scaffold
               dts: path.relative(dir, dts.absolutePath.pathname),
               dtsPackageName: `@types/${dts.scope}__${dts.module}`,
@@ -197,25 +199,27 @@ const command = Command.make(
   Effect.functionWithSpan({
     body: ({ dest, girs, scaffold }) =>
       Effect.gen(function* () {
-      const path = yield* Path.Path;
-         yield* Console.log(girs);
-         yield* mkdir(dest);
-         yield* Effect.all(
-           Array.map(girs, (dts) =>
-             Effect.gen(function* () {
-               const destination = `${dest}/${dts.scope}__${dts.module}`;
-               yield* Console.log('Building scaffold');
-               yield* Console.log('  Source:', scaffold);
-               yield* Console.log('  Destination:', destination);
-               yield* Console.log('  Scaffold:', scaffold);
-               yield* Console.log('  Scaffold:', path.relative(process.cwd(), path.dirname(scaffold)));
-               yield* cp(scaffold, destination);
-               yield* applyTemplate(destination, dts, scaffold);
-             }),
-           ),
-           { concurrency: 'unbounded' },
-         );
-         // yield* Console.log(yield* Effect.all(Array.map(files, applyTemplate), { concurrency: 'unbounded' }));
+        const path = yield* Path.Path;
+        const projectService = yield* ProjectService;
+        yield* Console.log(Array.map(girs, projectService.getAmbientModules()));
+        yield* Console.log(girs);
+        yield* mkdir(dest);
+        yield* Effect.all(
+          Array.map(girs, (dts) =>
+            Effect.gen(function* () {
+              const destination = `${dest}/${dts.scope}__${dts.module}`;
+              yield* Console.log('Building scaffold');
+              yield* Console.log('  Source:', scaffold);
+              yield* Console.log('  Destination:', destination);
+              yield* Console.log('  Scaffold:', scaffold);
+              yield* Console.log('  Scaffold:', path.relative(process.cwd(), path.dirname(scaffold)));
+              yield* cp(scaffold, destination);
+              yield* applyTemplate(destination, dts, scaffold);
+            }),
+          ),
+          { concurrency: 'unbounded' },
+        );
+        // yield* Console.log(yield* Effect.all(Array.map(files, applyTemplate), { concurrency: 'unbounded' }));
       }),
     captureStackTrace: true,
     options: { name: 'command' },

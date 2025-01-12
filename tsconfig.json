@@ -5,6 +5,7 @@
     { "path": "./configs/tsconfigs/tsconfig.eslint.json" },
     { "path": "./packages/eslint-plugin" },
     { "path": "./packages/girs-fixup" },
-    { "path": "./packages/top-bar" }
+    { "path": "./packages/top-bar" },
+    { "path": "./packages/ts-utils" }
   ]
 }

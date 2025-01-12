@@ -41,7 +41,8 @@
     ],
     "paths": {
       "@astal-config/eslint-plugin": ["./packages/eslint-plugin"],
-      "@astal-config/girs-fixup": ["./packages/girs-fixup"]
+      "@astal-config/girs-fixup": ["./packages/girs-fixup"],
+      "@astal-config/ts-utils": ["./packages/ts-utils"]
     }
   }
 }

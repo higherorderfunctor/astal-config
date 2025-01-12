@@ -16,14 +16,12 @@
   },
   "scripts": {},
   "dependencies": {
+    "@astal-config/ts-utils": "workspace:*",
     "@effect/cli": "0.51.1",
     "@effect/platform": "0.72.1",
     "@effect/platform-bun": "0.52.1",
     "@effect/printer": "0.40.1",
-    "@effect/printer-ansi": "0.40.1",
-    "@types/mustache": "^4.2.5",
     "effect": "3.12.1",
-    "handlebars": "^4.7.8",
-    "mustache": "^4.2.0"
+    "handlebars": "4.7.8"
   }
 }

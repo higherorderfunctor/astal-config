@@ -1,5 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": ["../../configs/tsconfigs/templates/tsconfig.bin.template.json"],
-  "references": [{ "path": "./tsconfig.src.json" }]
+  "references": [{ "path": "./tsconfig.src.json" }, { "path": "../ts-utils" }]
 }
