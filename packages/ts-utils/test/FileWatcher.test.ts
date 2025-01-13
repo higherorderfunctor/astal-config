@@ -29,10 +29,6 @@ describe('FileWatcher', () => {
         yield* Effect.sleep('250 millis');
 
         yield* FileWatcherMap.remove(ref, scope)
-
-        yield* Effect.sleep('250 millis');
-        yield* Effect.log("Created temporary file:", yield* fs.makeTempFile({ directory }));
-        yield* Effect.sleep('250 millis');
       }).pipe(
         Effect.scoped,
         Effect.provide(BunContext.layer),
