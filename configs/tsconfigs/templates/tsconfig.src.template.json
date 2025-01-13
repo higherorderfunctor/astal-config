@@ -3,9 +3,9 @@
   "extends": ["../../../tsconfig.base.json"],
   "include": ["${configDir}/src/**/*.ts", "${configDir}/src/**/*.tsx", "${configDir}/src/**/*.json"],
   "compilerOptions": {
-    "outDir": "${configDir}/dist/lib",
+    "outDir": "${configDir}/dist/src",
     "rootDir": "${configDir}",
-    "tsBuildInfoFile": "${configDir}/.tsbuildinfo/utils.tsbuildinfo",
+    "tsBuildInfoFile": "${configDir}/.tsbuildinfo/src.tsbuildinfo",
     "types": ["bun"]
   }
 }

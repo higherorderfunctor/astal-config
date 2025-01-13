@@ -8,6 +8,7 @@ astal
 Ansi
 Inspectable
 hsep
+millis
 vsep
 
 # eslint
