@@ -1,4 +1,4 @@
-import { Context, Effect, flow, HashSet, SynchronizedRef } from 'effect';
+import { Context, Effect, flow, HashSet, Layer, Match, Predicate, SynchronizedRef } from 'effect';
 import type ts from 'typescript';
 
 export type FileWatcherSet = HashSet.HashSet<ts.FileWatcher>;
@@ -32,14 +32,23 @@ export const remove = op(HashSet.remove);
 /**
  * Provide a `FileWatcherSet.Ref` to an effect.
  */
-// TODO: dual
-export const provide:
-  {
-    <E2 = never, R2 = never>(watchers: Effect.Effect<FileWatcherSet.Ref, E2, R2>): <A, E1, R1>(effect: Effect.Effect<A, E1, R1>) => Effect.Effect<A, E1 | E2, Exclude<R1 | R2, FileWatcherSet.Ref>;
-    (): <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R | FileWatcherSet.Ref>;
-} = 
-<E2 = never, R2 = never>(watchers?: Effect.Effect<FileWatcherSet.Ref, E2, R2>) =>
-  <A, E1, R1>(effect: Effect.Effect<A, E1, R1>) => Effect.gen(function* () {
-    const e = watchers ? yield* watchers : yield* FileWatcherSet.Ref;
-    return Effect.provideService(effect, FileWatcherSet.Ref, e);
-  }) as any;
+export const provide: {
+  <E2 = never, R2 = never>(
+    watchers: Effect.Effect<FileWatcherSet.Ref, E2, R2>,
+  ): <A, E1, R1>(effect: Effect.Effect<A, E1, R1>) => Effect.Effect<A, E1 | E2, Exclude<R1 | R2, FileWatcherSet.Ref>>;
+  <E2 extends never = never, R2 extends never = never>(
+    watchers: FileWatcherSet.Ref,
+  ): <A, E1, R1>(effect: Effect.Effect<A, E1, R1>) => Effect.Effect<A, E1 | E2, Exclude<R1 | R2, FileWatcherSet.Ref>>;
+} =
+  <E2 = never, R2 = never>(watchers: Effect.Effect<FileWatcherSet.Ref, E2, R2> | FileWatcherSet.Ref) =>
+  <A, E1, R1>(effect: Effect.Effect<A, E1, R1>) =>
+    Effect.gen(function* () {
+      const layer = Match.value(watchers).pipe(
+        Match.when({ [SynchronizedRef.SynchronizedRefTypeId]: Predicate.isNotUndefined }, (_: FileWatcherSet.Ref) =>
+          Effect.succeed(_),
+        ),
+        Match.orElse((_) => _),
+        Layer.effect(FileWatcherSet.Ref),
+      );
+      return yield* Effect.provide(effect, layer);
+    });

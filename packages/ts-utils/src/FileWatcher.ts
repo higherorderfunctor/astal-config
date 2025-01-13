@@ -12,24 +12,25 @@ const stub: ts.FileWatcher = {
   close: () => {},
 };
 
-const removeFileWatcher = (watcher: ts.FileWatcher) =>
-  Effect.flatMap(FileWatcherSet.FileWatcherSet, (watchers) => SynchronizedRef.getAndUpdate(watchers, flow(HashSet.remove(watcher))));
-
 const watchDirectory = (
   _path: string,
   _callback: ts.DirectoryWatcherCallback,
   _recursive?: boolean,
   _options?: ts.WatchOptions,
 ) =>
-  Effect.gen(function* () {
-    const runSync = Runtime.runSync(yield* Effect.runtime());
-    const watcher: ts.FileWatcher = {
+  Effect.Do.pipe(
+    Effect.bind('runSync', () => pipe(Effect.runtime(), Effect.map(Runtime.runSync))),
+    Effect.bind('watchers', () => FileWatcherSet.FileWatcherSet.Ref),
+    Effect.bind('watcher', ({ watchers, runSync }) => {
+      const watcher: ts.FileWatcher = {
       // TODO: implement
-      close: () => pipe(removeFileWatcher(watcher), FileWatcherSet.provide(), runSync),
+      close: () => {
+        pipe(FileWatcherSet.remove(watcher), FileWatcherSet.provide(watchers), runSync);
+      },
     };
-    yield* SynchronizedRef.getAndUpdate(watchers, flow(HashSet.add(watcher)));
-    return watcher;
-  });
+    return Effect.succeed(watcher);}),
+    Effect.tap(({ watchers, watcher }) => SynchronizedRef.getAndUpdate(watchers, flow(HashSet.add(watcher))))
+  );
 
 const watchFile = (
   _path: string,
@@ -42,7 +43,9 @@ const watchFile = (
     const watchers = yield* FileWatcherSet.FileWatcherSet.Ref;
     const watcher: ts.FileWatcher = {
       // TODO: implement
-      close: () => pipe(removeFileWatcher(watcher), Effect.provideService(FileWatcherSet.FileWatcherSet.Ref, watchers), runSync),
+      close: () => {
+        pipe(FileWatcherSet.remove(watcher), FileWatcherSet.provide(watchers), runSync);
+      },
     };
     yield* SynchronizedRef.getAndUpdate(watchers, flow(HashSet.add(watcher)));
     return watcher;
