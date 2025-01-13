@@ -23,13 +23,16 @@ const WatchBackend = pipe(
     pipe(
       Effect.succeed(Layer.fresh(BunFileSystem.layer).pipe(Layer.provide(Layer.fresh(ParcelWatcher)))),
       Effect.tap(() => Effect.logInfo('Fresh parcel watcher started')),
+      // delay to allow backend to setup the layer before returning to caller
+      Effect.tap(() => Effect.logInfo(Effect.sleep('250 millis'))),
     ),
     () => Effect.logInfo('Fresh parcel watcher stopped'),
   ),
   Layer.unwrapEffect,
 );
 
-const watch = (path: string) =>
+const watch = Effect.functionWithSpan({
+  body: (path: string) =>
   pipe(
     FileSystem.FileSystem,
     Effect.map((fs) => fs.watch(path)),
@@ -37,8 +40,12 @@ const watch = (path: string) =>
     Effect.flatMap(Stream.runScoped(Sink.drain)),
     Effect.provide(WatchBackend),
     Effect.fork,
-    v=>v
-  );
+    // delay to allow backend to setup the watch before returning to caller
+    Effect.tap(() => Effect.sleep('250 millis'))
+  ),
+  captureStackTrace: true,
+  options: { name: 'file-watcher-map-swtch'},
+});
 export type FileWatcherMap = HashMap.HashMap<Scope.CloseableScope, Fiber.RuntimeFiber<void, PlatformError>>;
 
 export namespace FileWatcherMap {
@@ -81,55 +88,60 @@ const rootCause: <A>(cause: Cause.Cause<A>) => Cause.Cause<A> = flow(
 /**
  * Adds a `ts.FileWatcher` from the set.
  */
-export const add = (path: string) => Effect.Do.pipe(
-  Effect.bind('ref', () => FileWatcherMap.Ref),
+export const add = Effect.functionWithSpan({
+  body: (ref: FileWatcherMap.Ref, path: string) => Effect.Do.pipe(
   Effect.bind('scope', () => Scope.make(ExecutionStrategy.parallel)),
   Effect.bind('fiber', ({ scope }) => pipe(watch(path), Effect.provideService(Scope.Scope, scope))),
-  v=>v,
-  Effect.tap(({ scope, fiber, ref }) =>  SynchronizedRef.getAndUpdate(ref, HashMap.set(scope, fiber))
+  Effect.tap(({ scope, fiber }) =>  SynchronizedRef.getAndUpdate(ref, HashMap.set(scope, fiber))
   ),
   Effect.map(({ scope }) => scope),
-);
+),
+  captureStackTrace: true,
+  options: { name: 'file-watcher-map-add'},
+})
 
 /**
  * Removes a `ts.FileWatcher` from the set.
  */
-export const remove = (scope: Scope.CloseableScope) => Effect.Do.pipe(
-  Effect.bind('ref', () => FileWatcherMap.Ref),
-  Effect.bind('map', ({ ref }) => SynchronizedRef.get(ref)),
+export const remove = Effect.functionWithSpan({
+body: (ref: FileWatcherMap.Ref, scope: Scope.CloseableScope) => Effect.Do.pipe(
+  Effect.bind('map', () => SynchronizedRef.get(ref)),
   Effect.bind('fiber', ({ map }) => HashMap.get(map, scope)),
-  Effect.tap(({ ref }) => SynchronizedRef.getAndUpdate(ref, HashMap.remove(scope))),
+  Effect.tap(() => SynchronizedRef.getAndUpdate(ref, HashMap.remove(scope))),
   Effect.tap(({ fiber }) => Scope.close(scope, Exit.interrupt(fiber.id()))),
-  Effect.flatMap(({ fiber }) => pipe(Fiber.join(fiber), Effect.sandbox)),
-  Effect.catchSomeDefect(flow(
+  Effect.flatMap(({ fiber }) => pipe(Fiber.join(fiber))),//, Effect.tapDefect(Effect.logWarning))),
+  Effect.catchSomeCause(flow(
     Option.liftPredicate(Cause.isCause),
     Option.flatMap(Option.liftPredicate(Cause.isInterrupted)),
     Option.map(rootCause),
     Option.map(() => Effect.void),
   )
   ),
-)
+),
+  captureStackTrace: true,
+  options: { name: 'file-watcher-map-remove'},
+})
 
-/**
- * Provide a `FileWatcherMap.Ref` to an effect.
- */
-export const provide: {
-  <E2 = never, R2 = never>(
-    ref: Effect.Effect<FileWatcherMap.Ref, E2, R2>,
-  ): <A, E1, R1>(effect: Effect.Effect<A, E1, R1>) => Effect.Effect<A, E1 | E2, Exclude<R1 | R2, FileWatcherMap.Ref>>;
-  <E2 extends never = never, R2 extends never = never>(
-    ref: FileWatcherMap.Ref,
-  ): <A, E1, R1>(effect: Effect.Effect<A, E1, R1>) => Effect.Effect<A, E1 | E2, Exclude<R1 | R2, FileWatcherMap.Ref>>;
-} =
-  <E2 = never, R2 = never>(ref: Effect.Effect<FileWatcherMap.Ref, E2, R2> | FileWatcherMap.Ref) =>
-  <A, E1, R1>(effect: Effect.Effect<A, E1, R1>) =>
-    Effect.gen(function* () {
-      const layer = Match.value(ref).pipe(
-        Match.when({ [SynchronizedRef.SynchronizedRefTypeId]: Predicate.isNotUndefined }, (_: FileWatcherMap.Ref) =>
-          Effect.succeed(_),
-        ),
-        Match.orElse((_) => _),
-        Layer.effect(FileWatcherMap.Ref),
-      );
-      return yield* Effect.provide(effect, layer);
-    });
+// /**
+//  * Provide a `FileWatcherMap.Ref` to an effect.
+//  */
+// export const provide: {
+//   <E2 = never, R2 = never>(
+//     ref: Effect.Effect<FileWatcherMap.Ref, E2, R2>,
+//   ): <A, E1, R1>(effect: Effect.Effect<A, E1, R1>) => Effect.Effect<A, E1 | E2, Exclude<R1 | R2, FileWatcherMap.Ref>>;
+//   <E2 extends never = never, R2 extends never = never>(
+//     ref: FileWatcherMap.Ref,
+//   ): <A, E1, R1>(effect: Effect.Effect<A, E1, R1>) => Effect.Effect<A, E1 | E2, Exclude<R1 | R2, FileWatcherMap.Ref>>;
+// } =
+//   <E2 = never, R2 = never>(ref: Effect.Effect<FileWatcherMap.Ref, E2, R2> | FileWatcherMap.Ref) =>
+//   <A, E1, R1>(effect: Effect.Effect<A, E1, R1>) =>
+//     Effect.gen(function* () {
+//       const layer = Match.value(ref).pipe(
+//         Match.when({ [SynchronizedRef.SynchronizedRefTypeId]: Predicate.isNotUndefined }, (_: FileWatcherMap.Ref) =>
+//           Effect.succeed(_),
+//         ),
+//         Match.orElse((_) => _),
+//         Layer.effect(FileWatcherMap.Ref),
+//       );
+//       return yield* Effect.provide(effect, layer);
+//     });

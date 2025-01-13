@@ -20,27 +20,25 @@ describe('FileWatcher', () => {
         const directory = yield* fs.makeTempDirectoryScoped();
         // const scope = yield* Scope.make();
 
-        const scope = yield* FileWatcherMap.add(directory);
+        const ref = yield* FileWatcherMap.ref();
+        const scope = yield* FileWatcherMap.add(ref, directory);
 
-        yield* Effect.log('250 millis');
-        yield* Console.log(yield* fs.makeTempFile({ directory }));
-        yield* Effect.log('250 millis');
+        yield* Effect.log("Created temporary file:", yield* fs.makeTempFile({ directory }));
 
-        yield* FileWatcherMap.remove(scope);
+        // allow watcher to catch the change
+        yield* Effect.sleep('250 millis');
 
-        yield* Effect.log('250 millis');
-        yield* Console.log(yield* fs.makeTempFile({ directory }));
-        yield* Effect.log('250 millis');
+        yield* FileWatcherMap.remove(ref, scope)
 
-        // const n = yield* Fiber.join(fiber).pipe(Effect.sandbox, Effect.merge);
-        // expect(Cause.isInterrupted(rootCause(n as Cause.Cause<never>))).toBeTrue();
+        yield* Effect.sleep('250 millis');
+        yield* Effect.log("Created temporary file:", yield* fs.makeTempFile({ directory }));
+        yield* Effect.sleep('250 millis');
       }).pipe(
-        FileWatcherMap.provide(FileWatcherMap.ref()),
         Effect.scoped,
         Effect.provide(BunContext.layer),
-          Effect.provide(Logger.structured),
         Effect.sandbox,
         Effect.tapErrorCause(flow(Cause.pretty, Effect.logFatal)),
+        Effect.provide(Logger.structured),
       ),
     ));
 });
