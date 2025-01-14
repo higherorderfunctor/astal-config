@@ -41,7 +41,6 @@
     "eslint/no-redeclare": "off",
     "eslint/no-ternary": "off",
     "eslint/sort-imports": "off",
-    "eslint/switch-case-braces": "off",
     "eslint/yoda": "off",
     /** Jest */
     "jest/require-hook": "off",
@@ -57,6 +56,7 @@
     "promise/prefer-await-to-then": "off",
     /** Typescript */
     "typescript/array-type": ["error", { "default": "generic" }],
+    "typescript/ban-types": "off",
     "typescript/consistent-indexed-object-style": "off",
     // doesn't work with types from effect schemas where interface is desirable
     "typescript/no-empty-interface": "off",
@@ -66,6 +66,7 @@
     "unicorn/filename-case": ["error", { "cases": { "kebabCase": true, "camelCase": true, "pascalCase": true } }],
     // preference for multiple optional args
     "unicorn/no-null": "off",
+    "unicorn/switch-case-braces": "off",
     /** Category: Restriction
      * Source: https://oxc.rs/docs/guide/usage/linter/rules.html#restriction-63
      * Cannot enable the category as won't be able to disable the rules.
