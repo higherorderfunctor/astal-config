@@ -1,8 +1,7 @@
 /* eslint-disable max-classes-per-file */
 
-import debug from 'debug';
 import type { Layer } from 'effect';
-import { Array, Data, Effect, flow, pipe } from 'effect';
+import { Array, Data, Schema as S, Effect, flow, Function, pipe, Record, Runtime } from 'effect';
 import ts from 'typescript';
 
 import * as ServerHost from './ServerHost.js';
@@ -14,12 +13,7 @@ import * as ServerHost from './ServerHost.js';
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const doNothing = (): void => {};
 
-const logTsserverErr = debug('tsserver-resolver:tsserver:err');
-const logTsserverInfo = debug('tsserver-resolver:tsserver:info');
-const logTsserverPerf = debug('tsserver-resolver:tsserver:perf');
-const logTsserverEvent = debug('tsserver-resolver:tsserver:event');
-
-const logger: ts.server.Logger = {
+const makeLogger: (runSync: <A, E>(effect: Effect.Effect<A, E, never>) => A) => ts.server.Logger = (runSync) => ({
   close: doNothing,
   endGroup: doNothing,
   getLogFileName: (): undefined => undefined,
@@ -27,18 +21,18 @@ const logger: ts.server.Logger = {
   info(s) {
     this.msg(s, ts.server.Msg.Info);
   },
-  loggingEnabled: (): boolean => logTsserverInfo.enabled || logTsserverErr.enabled || logTsserverPerf.enabled,
+  loggingEnabled: (): boolean => true,
   msg: (s, type) => {
     // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
     switch (type) {
       case ts.server.Msg.Err:
-        logTsserverErr(s);
+        pipe(Effect.logError(s, { type }), runSync);
         break;
       case ts.server.Msg.Perf:
-        logTsserverPerf(s);
+        pipe(Effect.logDebug(s, { type }), runSync);
         break;
       default:
-        logTsserverInfo(s);
+        pipe(Effect.logInfo(s, { type }), runSync);
         break;
     }
   },
@@ -46,9 +40,15 @@ const logger: ts.server.Logger = {
     this.msg(s, ts.server.Msg.Perf);
   },
   startGroup: doNothing,
-};
+});
 
-export type ProjectServiceError = NoProgramFound | NoProjectFound | NoSourceFileFound | NotConfigured;
+export type ProjectServiceError = NoProgramFound | NoProjectFound | NoSourceFileFound | NotConfigured | ParseError;
+
+export class DiagnosticError extends Data.TaggedClass('NotConfigured')<{
+  diagnostic: Array.NonEmptyReadonlyArray<ts.Diagnostic>;
+}> {
+  message = 'Diagnostic error occurred';
+}
 
 export class NoProgramFound extends Data.TaggedClass('NoProgramFound')<
   Readonly<{
@@ -79,148 +79,288 @@ export class NoSourceFileFound extends Data.TaggedClass('NoSourceFileFound')<
   message = 'No source file found';
 }
 
-export class NotConfigured extends Data.TaggedClass('NotConfigured')<{}> {
-  message = 'Project service not configured';
-
-  // constructor() {
-  //   super();
-  // }
+export class ParseError extends Data.TaggedClass('ParseError')<{
+  reason: string
+}> {
+  message = 'Parsing error occurred';
 }
 
-const getRootTsConfig: (options: {
-  projectService: ts.server.ProjectService;
-}) => Effect.Effect<ts.server.NormalizedPath, ProjectServiceError> = flow(
-  Effect.succeed,
-  Effect.bind('configuredProjects', ({ projectService }) => Effect.succeed(projectService.configuredProjects)),
-  Effect.bind('rootProject', ({ configuredProjects }) => Effect.succeed(configuredProjects.values().next().value)),
-  Effect.flatMap(({ rootProject }) => Effect.fromNullable(rootProject)),
-  Effect.mapError(() => new NotConfigured()),
-  Effect.map((rootProject) => rootProject.getConfigFilePath()),
+export class NotConfigured extends Data.TaggedClass('NotConfigured')<{}> {
+  message = 'Project service not configured';
+}
+
+const getRootTsConfig: (
+  projectService: ts.server.ProjectService,
+) => Effect.Effect<ts.server.NormalizedPath, ProjectServiceError> = Effect.functionWithSpan({
+  body: (projectService: ts.server.ProjectService) =>
+    Effect.Do.pipe(
+      Effect.bind('configuredProjects', () => Effect.succeed(projectService.configuredProjects)),
+      Effect.bind('rootProject', ({ configuredProjects }) => Effect.succeed(configuredProjects.values().next().value)),
+      Effect.flatMap(({ rootProject }) => Effect.fromNullable(rootProject)),
+      Effect.mapError(() => new NotConfigured()),
+      Effect.map((rootProject) => rootProject.getConfigFilePath()),
+    ),
+  captureStackTrace: true,
+  options: () => ({ name: 'projectService-getRootTsConfig' }),
+});
+
+/**
+ * Open's the file with tsserver so it loads the project that includes the file.
+ */
+const openClientFile: {
+  (options: {
+    directory?: string | undefined;
+    file: string;
+  }): (
+    projectService: ts.server.ProjectService,
+  ) => Effect.Effect<ts.server.OpenConfiguredProjectResult, ProjectServiceError>;
+  (
+    projectService: ts.server.ProjectService,
+    options: { directory?: string | undefined; file: string },
+  ): Effect.Effect<ts.server.OpenConfiguredProjectResult, ProjectServiceError>;
+} = Function.dual(
+  2,
+  Effect.functionWithSpan({
+    body: (
+      projectService: ts.server.ProjectService,
+      { directory, file }: { directory?: string | undefined; file: string },
+    ) =>
+      pipe(
+        Effect.logDebug('Opening client file', { directory, file }),
+        Effect.flatMap(() =>
+          pipe(
+            Effect.sync(() => projectService.openClientFile(file, undefined, undefined, directory ?? process.cwd())),
+            Effect.flatMap((configuredProject) => {
+              const { configFileErrors } = configuredProject;
+              if (configFileErrors && Array.isNonEmptyReadonlyArray(configFileErrors)) {
+                return Effect.fail(new DiagnosticError({ diagnostic: configFileErrors }));
+              }
+              return Effect.succeed(configuredProject);
+            }),
+          ),
+        ),
+      ),
+    captureStackTrace: true,
+    options: (_, { file }) => ({ name: `projectService-openClientFile-${file}` }), // TODO: relative
+  }),
 );
 
-const getProject: (
-  projectService: ts.server.ProjectService,
-) => (options: { file: string }) => Effect.Effect<ts.server.Project, ProjectServiceError> =
-  (projectService) =>
-  ({ file }) =>
-    pipe(
-      Effect.fromNullable(projectService.getDefaultProjectForFile(ts.server.toNormalizedPath(file), false)),
-      Effect.catchAll(() =>
-        getRootTsConfig({ projectService }).pipe(
-          Effect.flatMap((tsconfigPath) => Effect.fail(new NoProjectFound({ file, tsconfigPath }))),
-        ),
-      ),
-    );
-
-const getProgram: (
-  projectService: ts.server.ProjectService,
-) => (options: { file: string }) => Effect.Effect<ts.Program, ProjectServiceError> =
-  (projectService) =>
-  ({ file }) =>
-    pipe(
-      { file },
-      getProject(projectService),
-      Effect.flatMap((project) =>
-        pipe(
-          Effect.fromNullable(project.getLanguageService().getProgram()),
-          Effect.catchAll(() =>
-            getRootTsConfig({ projectService }).pipe(
-              Effect.flatMap((tsconfigPath) =>
-                Effect.fail(new NoProgramFound({ file, projectName: project.getProjectName(), tsconfigPath })),
+const getProject: {
+  (options: {
+    directory?: string | undefined;
+    file: string;
+  }): (projectService: ts.server.ProjectService) => Effect.Effect<ts.server.Project, ProjectServiceError>;
+  (
+    projectService: ts.server.ProjectService,
+    options: { directory?: string | undefined; file: string },
+  ): Effect.Effect<ts.server.Project, ProjectServiceError>;
+} = Function.dual(
+  2,
+  Effect.functionWithSpan({
+    body: (
+      projectService: ts.server.ProjectService,
+      { directory, file }: { directory?: string | undefined; file: string },
+    ) =>
+      pipe(
+        openClientFile(projectService, { directory, file }),
+        Effect.flatMap(() =>
+          pipe(
+            Effect.fromNullable(projectService.getDefaultProjectForFile(ts.server.toNormalizedPath(file), false)),
+            Effect.catchAll(() =>
+              getRootTsConfig(projectService).pipe(
+                Effect.flatMap((tsconfigPath) => Effect.fail(new NoProjectFound({ file, tsconfigPath }))),
               ),
             ),
           ),
         ),
       ),
-    );
+    captureStackTrace: true,
+    options: (_, { file }) => ({ name: `projectService-getProject-${file}` }), // TODO: relative
+  }),
+);
 
-const getSourceFile: (
-  projectService: ts.server.ProjectService,
-) => (options: { file: string }) => Effect.Effect<ts.SourceFile, ProjectServiceError> =
-  (projectService) =>
-  ({ file }) =>
-    pipe(
-      Effect.succeed({ file }),
-      Effect.bind('project', getProject(projectService)),
-      Effect.bind('program', getProgram(projectService)),
-      Effect.flatMap(({ file, program, project }) =>
-        pipe(
-          Effect.fromNullable(program.getSourceFile(file)),
-          Effect.catchAll(() =>
-            getRootTsConfig({ projectService }).pipe(
-              Effect.flatMap((tsconfigPath) =>
-                Effect.fail(new NoSourceFileFound({ file, projectName: project.getProjectName(), tsconfigPath })),
+const getProgram: {
+  (options: {
+    directory?: string | undefined;
+    file: string;
+  }): (projectService: ts.Program) => Effect.Effect<ts.server.Project, ProjectServiceError>;
+  (
+    projectService: ts.server.ProjectService,
+    options: { directory?: string | undefined; file: string },
+  ): Effect.Effect<ts.Program, ProjectServiceError>;
+} = Function.dual(
+  2,
+  Effect.functionWithSpan({
+    body: (projectService, { directory, file }: { directory?: string | undefined; file: string }) =>
+      pipe(
+        getProject(projectService, { directory, file }),
+        Effect.flatMap((project) =>
+          pipe(
+            Effect.fromNullable(project.getLanguageService().getProgram()),
+            Effect.catchAll(() =>
+              getRootTsConfig(projectService).pipe(
+                Effect.flatMap((tsconfigPath) =>
+                  Effect.fail(new NoProgramFound({ file, projectName: project.getProjectName(), tsconfigPath })),
+                ),
               ),
             ),
           ),
         ),
       ),
-    );
+    captureStackTrace: true,
+    options: (_, { file }) => ({ name: `projectService-getProgram-${file}` }), // TODO: relative
+  }),
+);
 
-const getTypeChecker: (
-  projectService: ts.server.ProjectService,
-) => (options: { file: string }) => Effect.Effect<ts.TypeChecker, ProjectServiceError> =
-  (projectService) =>
-  ({ file }) =>
-    pipe(
-      Effect.succeed({ file }),
-      Effect.bind('project', getProject(projectService)),
-      Effect.bind('program', getProgram(projectService)),
-      Effect.flatMap(({ file, program, project }) =>
-        pipe(
-          Effect.fromNullable(program.getTypeChecker()),
-          Effect.catchAll(() =>
-            getRootTsConfig({ projectService }).pipe(
-              Effect.flatMap((tsconfigPath) =>
-                Effect.fail(new NoSourceFileFound({ file, projectName: project.getProjectName(), tsconfigPath })),
+const getSourceFile: {
+  (options: {
+    directory?: string | undefined;
+    file: string;
+  }): (projectService: ts.Program) => Effect.Effect<ts.SourceFile, ProjectServiceError>;
+  (
+    projectService: ts.server.ProjectService,
+    options: { directory?: string | undefined; file: string },
+  ): Effect.Effect<ts.SourceFile, ProjectServiceError>;
+} = Function.dual(
+  2,
+  Effect.functionWithSpan({
+    body: (
+      projectService: ts.server.ProjectService,
+      { directory, file }: { directory?: string | undefined; file: string },
+    ) =>
+      Effect.Do.pipe(
+        Effect.bind('project', () => getProject(projectService, { directory, file })),
+        Effect.bind('program', () => getProgram(projectService, { directory, file })),
+        Effect.flatMap(({ program, project }) =>
+          pipe(
+            Effect.fromNullable(program.getSourceFile(file)),
+            Effect.catchAll(() =>
+              getRootTsConfig(projectService).pipe(
+                Effect.flatMap((tsconfigPath) =>
+                  Effect.fail(new NoSourceFileFound({ file, projectName: project.getProjectName(), tsconfigPath })),
+                ),
               ),
             ),
           ),
         ),
       ),
-    );
+    captureStackTrace: true,
+    options: (_, { file }) => ({ name: `projectService-getSourceFile-${file}` }), // TODO: relative
+  }),
+);
 
-const getAmbientModules: (
-  projectService: ts.server.ProjectService,
-) => (options: { file: string }) => Effect.Effect<Array<string>, ProjectServiceError> =
-  (projectService) =>
-  ({ file }) =>
-    pipe(
-      Effect.succeed({ file }),
-      Effect.bind('typeChecker', getTypeChecker(projectService)),
-      Effect.map(({ typeChecker }) =>
-        pipe(
-          typeChecker.getAmbientModules(),
-          Array.flatMap((module) => module.getDeclarations() ?? []),
-          Array.map((declaration) => declaration.getSourceFile().fileName),
+/**
+ * Get a type check from a project file.
+ */
+const getTypeChecker: {
+  (options: {
+    directory?: string | undefined;
+    file: string;
+  }): (projectService: ts.server.ProjectService) => Effect.Effect<ts.TypeChecker, ProjectServiceError>;
+  (
+    projectService: ts.server.ProjectService,
+    options: { directory?: string | undefined; file: string },
+  ): Effect.Effect<ts.TypeChecker, ProjectServiceError>;
+} = Function.dual(
+  2,
+  Effect.functionWithSpan({
+    body: (
+      projectService: ts.server.ProjectService,
+      { directory, file }: { directory?: string | undefined; file: string },
+    ) =>
+      Effect.Do.pipe(
+        Effect.bind('project', () => getProject(projectService, { directory, file })),
+        Effect.bind('program', () => getProgram(projectService, { directory, file })),
+        Effect.flatMap(({ program, project }) =>
+          pipe(
+            Effect.fromNullable(program.getTypeChecker()),
+            Effect.catchAll(() =>
+              getRootTsConfig(projectService).pipe(
+                Effect.flatMap((tsconfigPath) =>
+                  Effect.fail(new NoSourceFileFound({ file, projectName: project.getProjectName(), tsconfigPath })),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
-    );
+    captureStackTrace: true,
+    options: (_, { file }) => ({ name: `projectService-getTypeChecker-${file}` }), // TODO: relative
+  }),
+);
+
+/**
+ * Get ambient modules from a project file.
+ */
+const getAmbientModules: {
+  (options: {
+    directory?: string | undefined;
+    file: string;
+  }): (projectService: ts.server.ProjectService) => Effect.Effect<Readonly<Record<string, ReadonlyArray<string>>>, ProjectServiceError>;
+  (
+    projectService: ts.server.ProjectService,
+    options: { directory: string | undefined; file: string },
+  ): Effect.Effect<Readonly<Record<string, ReadonlyArray<string>>>, ProjectServiceError>;
+} = Function.dual(
+  2,
+  Effect.functionWithSpan({
+    body: (
+      projectService: ts.server.ProjectService,
+      { directory, file }: { directory?: string | undefined; file: string },
+    ): Effect.Effect<Readonly<Record<string, ReadonlyArray<string>>>, ProjectServiceError> =>
+      Effect.Do.pipe(
+        Effect.bind('typeChecker', () => getTypeChecker(projectService, { directory, file })),
+        Effect.flatMap(({ typeChecker }) => {
+          const t = pipe(
+            typeChecker.getAmbientModules(),
+            Array.map((module) => Effect.all([
+                S.decode(S.parseJson(S.String))(module.getName()),
+                pipe(
+                  (module.getDeclarations() ?? []),
+                  Array.map((declaration) => declaration.getSourceFile().fileName),
+                  Effect.succeed,
+                ),
+            ])),
+            Effect.all,
+            v=>v,
+            Effect.map(Record.fromEntries),
+            Effect.mapError((error) => new ParseError({ reason: error.toString() })),
+          );
+          return t;
+        }
+        ),
+      ),
+    captureStackTrace: true,
+    options: (_, { file }) => ({ name: `projectService-gettAmbientModules-${file}` }), // TODO: relative
+  }),
+);
 
 export class ProjectService extends Effect.Service<ProjectService>()('ProjectService', {
   accessors: true,
   dependencies: [ServerHost.layer],
   effect: Effect.gen(function* () {
+    const runSync = Runtime.runSync(yield* Effect.runtime());
     const host: ts.server.ServerHost = yield* ServerHost.ServerHost;
     const projectService = new ts.server.ProjectService({
       cancellationToken: { isCancellationRequested: (): boolean => false },
       eventHandler: (e): void => {
-        if (logTsserverEvent.enabled) logTsserverEvent(e);
+        pipe(Effect.logInfo(e), runSync);
       },
       host,
       jsDocParsingMode: ts.JSDocParsingMode.ParseNone,
-      logger,
+      logger: makeLogger(runSync),
       session: undefined,
       useInferredProjectPerProjectRoot: false,
       useSingleInferredProject: false,
     });
 
     return {
-      getAmbientModules: (file: string) => getAmbientModules(projectService)({ file }),
-      getProgram: (file: string) => getProgram(projectService)({ file }),
-      getProject: (file: string) => getProject(projectService)({ file }),
-      getSourceFile: (file: string) => getSourceFile(projectService)({ file }),
-      getTypeChecker: (file: string) => getTypeChecker(projectService)({ file }),
+      getAmbientModules: (file: string, directory?: string) => getAmbientModules(projectService, { directory, file }),
+      getProgram: (file: string, directory?: string) => getProgram(projectService, { directory, file }),
+      getProject: (file: string, directory?: string) => getProject(projectService, { directory, file }),
+      getSourceFile: (file: string, directory?: string) => getSourceFile(projectService, { directory, file }),
+      getTypeChecker: (file: string, directory?: string) => getTypeChecker(projectService, { directory, file }),
+      openClientFile: (file: string, directory?: string) => openClientFile(projectService, { directory, file }),
     };
   }),
 }) {}
@@ -229,75 +369,3 @@ export const layer: Layer.Layer<ProjectService> = ProjectService.Default;
 
 export const layerNoDeps: Layer.Layer<ProjectService, never, ServerHost.ServerHost> =
   ProjectService.DefaultWithoutDependencies;
-//
-// // /**
-// //  * Implementation.
-// //  */
-// //
-// // const logInfo = debug('tsserver-resolver:resolver:info');
-// // const logError = debug('tsserver-resolver:resolver:error');
-// // const logTrace = debug('tsserver-resolver:resolver:trace');
-// //
-// // const logRight: <R>(
-// //   message: (args: NoInfer<R>) => Parameters<Debugger>,
-// //   log?: Debugger,
-// // ) => <L = never>(self: Effect.Effect<R, L>) => Effect.Effect<R, L> =
-// //   (message, log = logInfo) =>
-// //   (self) =>
-// //     Effect.map(self, (args) => {
-// //       log(...message(args));
-// //       return args;
-// //     });
-// //
-// // const logLeft: <L>(
-// //   message: (args: NoInfer<L>) => Parameters<Debugger>,
-// //   log?: Debugger,
-// // ) => <R>(self: Effect.Effect<R, L>) => Effect.Effect<R, L> =
-// //   (message, log = logError) =>
-// //   (self) =>
-// //     Effect.mapLeft(self, (args) => {
-// //       log(...message(args));
-// //       return args;
-// //     });
-// //
-// // const NOT_FOUND: importX.ResultNotFound = { found: false };
-// //
-// // const fail: <T extends Array<unknown>>(
-// //   message: (...value: NoInfer<T>) => Parameters<Debugger>,
-// //   log?: Debugger,
-// // ) => (...value: T) => importX.ResultNotFound =
-// //   (message, log = logError) =>
-// //   (...value) => {
-// //     log(...message(...value));
-// //     return NOT_FOUND;
-// //   };
-// //
-// // export const success: (path: string) => importX.ResultFound = (path) => ({ found: true, path });
-// //
-// // /**
-// //  * Get a `ProjectService` instance.
-// //  */
-// // const getProjectService: () => Effect.Effect<ts.server.ProjectService, importX.ResultNotFound> = () =>
-// //   Effect.right(projectService);
-// //
-// // /**
-// //  * Open's the file with tsserver so it loads the project that includes the file.
-// //  *
-// //  * @remarks Not necessary if using the `projectService` from `typescript-eslint`.
-// //  */
-// // export const openClientFile: (options: {
-// //   file: string;
-// // }) => Effect.Effect<ts.server.OpenConfiguredProjectResult, importX.ResultNotFound> = flow(
-// //   Effect.right,
-// //   logRight(({ file }) => ['Opening client file:', { file }], logTrace),
-// //   Effect.bind('projectService', getProjectService),
-// //   Effect.flatMap(({ file, projectService }) =>
-// //     Effect.liftPredicate(
-// //       projectService.openClientFile(file, undefined, undefined, process.cwd()),
-// //       ({ configFileErrors }) => configFileErrors === undefined || configFileErrors.length === 0,
-// //       fail(({ configFileErrors }) => ['Failed to open:', { diagnostics: configFileErrors, file }], logTrace),
-// //     ),
-// //   ),
-// //   logRight(({ configFileName }) => ['Opened client file:', { clientFile: configFileName }], logTrace),
-// // );
-// //

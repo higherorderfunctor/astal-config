@@ -1,8 +1,23 @@
-import { FileSystem } from '@effect/platform';
+import { FileSystem, Path } from '@effect/platform';
+import type { PlatformError } from '@effect/platform/Error';
 import { BunFileSystem } from '@effect/platform-bun';
-import { PlatformError } from '@effect/platform/Error';
-import { Context, Effect, Fiber, flow, HashMap, Layer, Match, Scope, Predicate, SynchronizedRef, Stream, Sink, pipe, ExecutionStrategy, Exit, Cause, Option, Function } from 'effect';
-import type ts from 'typescript';
+import {
+  Cause,
+  Effect,
+  ExecutionStrategy,
+  Exit,
+  Fiber,
+  flow,
+  Function,
+  HashMap,
+  Layer,
+  Match,
+  Option,
+  pipe,
+  Scope,
+  Stream,
+  SynchronizedRef,
+} from 'effect';
 
 // NOTE: Work around for this file not being exported by @effect/platform-bun
 //       It only imports the types.
@@ -15,48 +30,74 @@ import type { layer as ParcelWatchBackend } from '../node_modules/@effect/platfo
 // @ts-expect-error Types imported separately
 // eslint-disable-next-line import-x/no-relative-packages
 import { layer as _ParcelWatchBackend } from '../node_modules/@effect/platform-node-shared/dist/esm/NodeFileSystem/ParcelWatcher.js';
+
 // NOTE: Stitches the implementation with the import types
 const ParcelWatcher = _ParcelWatchBackend as typeof ParcelWatchBackend;
 
-const WatchBackend = pipe(
-  Effect.acquireRelease(
-    pipe(
-      Effect.succeed(Layer.fresh(BunFileSystem.layer).pipe(Layer.provide(Layer.fresh(ParcelWatcher)))),
-      Effect.tap(() => Effect.logInfo('Fresh parcel watcher started')),
-      // delay to allow backend to setup the layer before returning to caller
-      Effect.tap(() => Effect.logInfo(Effect.sleep('250 millis'))),
-    ),
-    () => Effect.logInfo('Fresh parcel watcher stopped'),
-  ),
-  Layer.unwrapEffect,
-);
+export type Callback<E, R> = (event: FileSystem.WatchEvent) => Effect.Effect<void, E | PlatformError, R>;
 
-const watch = Effect.functionWithSpan({
-  body: (path: string) =>
+export type FileWatcherMap<E> = SynchronizedRef.SynchronizedRef<
+  HashMap.HashMap<Scope.CloseableScope, Fiber.RuntimeFiber<void, E | PlatformError>>
+>;
+
+/**
+ * Create a fresh `FileSystem` instance to support watch unsubscribing.
+ */
+const FileSystemWithWatchBackend = (filepath: string) =>
   pipe(
-    FileSystem.FileSystem,
-    Effect.map((fs) => fs.watch(path)),
-    Effect.map(Stream.tap(Effect.log)),
-    Effect.flatMap(Stream.runScoped(Sink.drain)),
-    Effect.provide(WatchBackend),
-    Effect.fork,
-    // delay to allow backend to setup the watch before returning to caller
-    Effect.tap(() => Effect.sleep('250 millis'))
-  ),
+    Path.Path,
+    Effect.flatMap(
+      Effect.functionWithSpan({
+        body: () =>
+          pipe(
+            Effect.acquireRelease(
+              pipe(
+                // start with a fresh file system layer
+                Effect.succeed(Layer.fresh(BunFileSystem.layer.pipe(Layer.provide(ParcelWatcher)))),
+                // log the resource is acquired
+                Effect.tap(() => Effect.logInfo('Started watching:', filepath)),
+                // delay to allow backend to setup the layer before returning to caller
+                Effect.tap(() => Effect.logInfo(Effect.sleep('250 millis'))),
+              ),
+              // log the resource is released
+              () => Effect.logInfo('Stopped watching:', filepath),
+            ),
+          ),
+        captureStackTrace: true,
+        options: (path: Path.Path) => ({ name: `fs-watch-${path.relative(process.cwd(), filepath)}` }),
+      }),
+    ),
+    Layer.unwrapEffect,
+  );
+/**
+ *
+ * Setup a scoped watch in a forked fiber consuming the stream.
+ */
+const watch = Effect.functionWithSpan({
+  body: <E, R>(path: string, callback: Callback<E, R>) =>
+    pipe(
+      // require file system
+      FileSystem.FileSystem,
+      // start the watch
+      Effect.map((fs) => fs.watch(path)),
+      // watch handler
+      Effect.flatMap(Stream.runForEachScoped(callback)),
+      // inject a fresh version
+      Effect.provide(FileSystemWithWatchBackend(path)),
+      // run the stream processor in parallel to the parent fiber
+      Effect.fork,
+      // delay to allow backend to setup the watch before returning to caller
+      Effect.tap(() => Effect.sleep('250 millis')),
+    ),
   captureStackTrace: true,
-  options: { name: 'file-watcher-map-swtch'},
+  options: { name: 'file-watcher-map-watch' },
 });
-export type FileWatcherMap = HashMap.HashMap<Scope.CloseableScope, Fiber.RuntimeFiber<void, PlatformError>>;
-
-export namespace FileWatcherMap {
-  export type Ref = SynchronizedRef.SynchronizedRef<FileWatcherMap>;
-  export const Ref = Context.GenericTag<Ref, Ref>('Ref');
-}
 
 /**
  * Constructs a new `FileWatcherMap`.
  */
-export const ref = (): Effect.Effect<FileWatcherMap.Ref> => SynchronizedRef.make(HashMap.empty<Scope.CloseableScope, Fiber.RuntimeFiber<void, PlatformError>>());
+export const make = <E = never>(): Effect.Effect<FileWatcherMap<E>> =>
+  SynchronizedRef.make(HashMap.empty<Scope.CloseableScope, Fiber.RuntimeFiber<void, E | PlatformError>>());
 
 const rootCause: <A>(cause: Cause.Cause<A>) => Cause.Cause<A> = flow(
   Match.value,
@@ -89,41 +130,54 @@ const rootCause: <A>(cause: Cause.Cause<A>) => Cause.Cause<A> = flow(
  * Adds a `ts.FileWatcher` from the set.
  */
 export const add: {
-  (path: string): (ref: FileWatcherMap.Ref) => Effect.Effect<Scope.CloseableScope, never, never>;
-  (ref: FileWatcherMap.Ref, path: string): Effect.Effect<Scope.CloseableScope, never, never>;
-} = Function.dual(2, Effect.functionWithSpan({
-  body: (ref: FileWatcherMap.Ref, path: string) => Effect.Do.pipe(
-  Effect.bind('scope', () => Scope.make(ExecutionStrategy.parallel)),
-  Effect.bind('fiber', ({ scope }) => pipe(watch(path), Effect.provideService(Scope.Scope, scope))),
-  Effect.tap(({ scope, fiber }) =>  SynchronizedRef.getAndUpdate(ref, HashMap.set(scope, fiber))
-  ),
-  Effect.map(({ scope }) => scope),
-),
-  captureStackTrace: true,
-  options: { name: 'file-watcher-map-add'},
-}));
+  <E, R>(path: string, callback: Callback<E, R>): (watchers: FileWatcherMap<E>) => Effect.Effect<Scope.CloseableScope>;
+  <E, R>(watchers: FileWatcherMap<E>, path: string, callback: Callback<E, R>): Effect.Effect<Scope.CloseableScope>;
+} = Function.dual(
+  3,
+  Effect.functionWithSpan({
+    body: <E, R>(watchers: FileWatcherMap<E>, path: string, callback: Callback<E, R>) =>
+      Effect.Do.pipe(
+        Effect.bind('scope', () => Scope.make(ExecutionStrategy.parallel)),
+        Effect.bind('fiber', ({ scope }) => pipe(watch(path, callback), Effect.provideService(Scope.Scope, scope))),
+        Effect.tap(({ fiber, scope }) => SynchronizedRef.getAndUpdate(watchers, HashMap.set(scope, fiber))),
+        Effect.map(({ scope }) => scope),
+      ),
+    captureStackTrace: true,
+    options: { name: 'file-watcher-map-add' },
+  }),
+);
 
 /**
  * Removes a `ts.FileWatcher` from the set.
  */
 export const remove: {
-(scope: Scope.CloseableScope): (ref: FileWatcherMap.Ref) => Effect.Effect<void, PlatformError | Cause.NoSuchElementException, never>;
-(ref: FileWatcherMap.Ref, scope: Scope.CloseableScope): Effect.Effect<void, PlatformError | Cause.NoSuchElementException, never>;
-}  = Function.dual(2, Effect.functionWithSpan({
-body: (ref: FileWatcherMap.Ref, scope: Scope.CloseableScope) => Effect.Do.pipe(
-  Effect.bind('map', () => SynchronizedRef.get(ref)),
-  Effect.bind('fiber', ({ map }) => HashMap.get(map, scope)),
-  Effect.tap(() => SynchronizedRef.getAndUpdate(ref, HashMap.remove(scope))),
-  Effect.tap(({ fiber }) => Scope.close(scope, Exit.interrupt(fiber.id()))),
-  Effect.flatMap(({ fiber }) => pipe(Fiber.join(fiber))),//, Effect.tapDefect(Effect.logWarning))),
-  Effect.catchSomeCause(flow(
-    Option.liftPredicate(Cause.isCause),
-    Option.flatMap(Option.liftPredicate(Cause.isInterrupted)),
-    Option.map(rootCause),
-    Option.map(() => Effect.void),
-  )
-  ),
-),
-  captureStackTrace: true,
-  options: { name: 'file-watcher-map-remove'},
-}));
+  (
+    scope: Scope.CloseableScope,
+  ): <E>(watchers: FileWatcherMap<E>) => Effect.Effect<void, Cause.NoSuchElementException | PlatformError>;
+  <E>(
+    watchers: FileWatcherMap<E>,
+    scope: Scope.CloseableScope,
+  ): Effect.Effect<void, Cause.NoSuchElementException | PlatformError>;
+} = Function.dual(
+  2,
+  Effect.functionWithSpan({
+    body: <E>(watchers: FileWatcherMap<E>, scope: Scope.CloseableScope) =>
+      Effect.Do.pipe(
+        Effect.bind('map', () => SynchronizedRef.get(watchers)),
+        Effect.bind('fiber', ({ map }) => HashMap.get(map, scope)),
+        Effect.tap(() => SynchronizedRef.getAndUpdate(watchers, HashMap.remove(scope))),
+        Effect.tap(({ fiber }) => Scope.close(scope, Exit.interrupt(fiber.id()))),
+        Effect.flatMap(({ fiber }) => pipe(Fiber.join(fiber))),
+        Effect.catchSomeCause(
+          flow(
+            Option.liftPredicate(Cause.isCause),
+            Option.flatMap(Option.liftPredicate(Cause.isInterrupted)),
+            Option.map(rootCause),
+            Option.map(() => Effect.void),
+          ),
+        ),
+      ),
+    captureStackTrace: true,
+    options: { name: 'file-watcher-map-remove' },
+  }),
+);

@@ -17,11 +17,11 @@
   "scripts": {},
   "dependencies": {
     "@astal-config/ts-utils": "workspace:*",
-    "@effect/cli": "0.51.1",
-    "@effect/platform": "0.72.1",
-    "@effect/platform-bun": "0.52.1",
-    "@effect/printer": "0.40.1",
-    "effect": "3.12.1",
+    "@effect/cli": "0.51.2",
+    "@effect/platform": "0.72.2",
+    "@effect/platform-bun": "0.52.2",
+    "@effect/printer": "0.40.2",
+    "effect": "3.12.2",
     "handlebars": "4.7.8"
   }
 }

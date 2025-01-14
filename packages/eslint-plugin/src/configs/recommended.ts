@@ -27,7 +27,7 @@ export const plugins: TSESLint.FlatConfig.Plugins = {
   '@typescript-eslint': tseslint.plugin,
   astal: astalPlugin,
   codegen: codegenPlugin,
-  'prefer-arrow-functions': preferArrowFunctionsPlugin.default,
+  'prefer-arrow-functions': preferArrowFunctionsPlugin as TSESLint.Linter.Plugin,
   prettier: prettierPlugin,
   promise: promisePlugin,
   'sort-destructure-keys': sortDestructureKeysPlugin,

@@ -1,0 +1,6 @@
+{
+  "noLib": true,
+  "compilerOptions": {
+    "types": []
+  }
+}
