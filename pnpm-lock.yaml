@@ -25,7 +25,6 @@ overrides:
   effect: 3.12.2
   eslint: 9.18.0
   eslint-plugin-import-x: 4.6.1
-  jiti: 2.4.2
   typescript: 5.7.3
   typescript-eslint: 8.20.0
 
@@ -102,9 +101,6 @@ importers:
       eslint-plugin-import-x:
         specifier: 4.6.1
         version: 4.6.1(patch_hash=hxze4txo4xxcycycwsi3aqsi3y)(eslint@9.18.0(jiti@2.4.2))(typescript@5.7.3)
-      jiti:
-        specifier: 2.4.2
-        version: 2.4.2
       madge:
         specifier: 8.0.0
         version: 8.0.0(typescript@5.7.3)
@@ -332,6 +328,9 @@ importers:
       '@effect/platform-node-shared':
         specifier: 0.22.2
         version: 0.22.2(@effect/platform@0.72.2(effect@3.12.2))(effect@3.12.2)
+      '@typescript/source':
+        specifier: https://github.com/microsoft/TypeScript/archive/refs/tags/v5.7.3.tar.gz
+        version: typescript@https://github.com/microsoft/TypeScript/archive/refs/tags/v5.7.3.tar.gz
       bun-types:
         specifier: ^1.1.43
         version: 1.1.43
@@ -2708,7 +2707,7 @@ packages:
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     hasBin: true
     peerDependencies:
-      jiti: 2.4.2
+      jiti: '*'
     peerDependenciesMeta:
       jiti:
         optional: true
@@ -4419,6 +4418,12 @@ packages:
 
   typescript@5.7.3:
     resolution: {integrity: sha512-84MVSjMEHP+FQRPy3pX9sTVV/INIex71s9TL2Gm5FG/WG1SqXeKyZ0k7/blY/4FdOzI12CBy1vGc4og/eus0fw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
+  typescript@https://github.com/microsoft/TypeScript/archive/refs/tags/v5.7.3.tar.gz:
+    resolution: {tarball: https://github.com/microsoft/TypeScript/archive/refs/tags/v5.7.3.tar.gz}
+    version: 5.7.3
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -7908,7 +7913,8 @@ snapshots:
       graceful-fs: 4.2.11
       picomatch: 2.3.1
 
-  jiti@2.4.2: {}
+  jiti@2.4.2:
+    optional: true
 
   jju@1.4.0: {}
 
@@ -8990,6 +8996,8 @@ snapshots:
       - supports-color
 
   typescript@5.7.3: {}
+
+  typescript@https://github.com/microsoft/TypeScript/archive/refs/tags/v5.7.3.tar.gz: {}
 
   ua-parser-js@1.0.40: {}
 

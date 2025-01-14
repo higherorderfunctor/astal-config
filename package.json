@@ -34,7 +34,6 @@
       "effect": "$effect",
       "eslint": "$eslint",
       "eslint-plugin-import-x": "$eslint-plugin-import-x",
-      "jiti": "$jiti",
       "typescript": "$typescript",
       "typescript-eslint": "$typescript-eslint"
     }
@@ -75,7 +74,6 @@
     "esbuild": "0.24.2",
     "eslint": "9.18.0",
     "eslint-plugin-import-x": "4.6.1",
-    "jiti": "2.4.2",
     "madge": "8.0.0",
     "prettier": "3.4.2",
     "rimraf": "6.0.1",

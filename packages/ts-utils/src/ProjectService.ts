@@ -2,6 +2,7 @@ import type { Layer } from 'effect';
 import { Array, Effect, Function, Match, pipe, Record, Runtime, Schema as S } from 'effect';
 import ts from 'typescript';
 
+
 import * as ProjectServiceError from './ProjectServiceError/index.js';
 import * as ServerHost from './ServerHost.js';
 
@@ -43,20 +44,99 @@ const makeLogger: (runSync: <A, E>(effect: Effect.Effect<A, E>) => A) => ts.serv
 /**
  * Get the root most `tsconfig.json` for the first configured project.
  */
-const getRootTsConfig: (
-  projectService: ts.server.ProjectService,
-) => Effect.Effect<ts.server.NormalizedPath, ProjectServiceError.ProjectServiceError> = Effect.functionWithSpan({
-  body: (projectService: ts.server.ProjectService) =>
-    Effect.Do.pipe(
-      Effect.bind('configuredProjects', () => Effect.succeed(projectService.configuredProjects)),
-      Effect.bind('rootProject', ({ configuredProjects }) => Effect.succeed(configuredProjects.values().next().value)),
-      Effect.flatMap(({ rootProject }) => Effect.fromNullable(rootProject)),
-      Effect.mapError(() => new ProjectServiceError.NotConfigured()),
-      Effect.map((rootProject) => rootProject.getConfigFilePath()),
-    ),
-  captureStackTrace: true,
-  options: () => ({ name: 'projectService-getRootTsConfig' }),
-});
+// const getRootTsConfig: (
+//   projectService: ts.server.ProjectService,
+// ) => Effect.Effect<ts.server.NormalizedPath, ProjectServiceError.ProjectServiceError> = Effect.functionWithSpan({
+//   body: (projectService: ts.server.ProjectService) =>
+//     Effect.Do.pipe(
+//       Effect.bind('configuredProjects', () => Effect.succeed(projectService.configuredProjects)),
+//       Effect.bind('rootProject', ({ configuredProjects }) => Effect.succeed(configuredProjects.values().next().value)),
+//       Effect.flatMap(({ rootProject }) => Effect.fromNullable(rootProject)),
+//       Effect.mapError(() => new ProjectServiceError.NotConfigured()),
+//       Effect.map((rootProject) => rootProject.getConfigFilePath()),
+//     ),
+//   captureStackTrace: true,
+//   options: () => ({ name: 'projectService-getRootTsConfig' }),
+// });
+
+// const getDefaultProject: (
+//   projectService: ts.server.ProjectService,
+//   options: {
+//       directory?: string | undefined;
+//       ensureProject?: boolean | undefined;
+//       file: string;
+//     }
+// ) => Effect.Effect<ts.server.NormalizedPath, ProjectServiceError.ProjectServiceError> = Effect.functionWithSpan({
+//   body: (projectService: ts.server.ProjectService, options: {
+//       directory?: string | undefined;
+//       ensureProject?: boolean | undefined;
+//       file: string;
+//     }) =>
+//     Effect.Do.pipe(
+//       Effect.bind('configuredProjects', () => Effect.succeed(projectService.getDefaultProjectForFile(ts.server.toNormalizedPath(options.file), options.ensureProject ?? true))),
+//       Effect.flatMap(({ rootProject }) => Effect.fromNullable(rootProject)),
+//       Effect.bind('rootProject', ({ configuredProjects }) => Effect.succeed(configuredProjects.values().next().value)),
+//       Effect.flatMap(({ rootProject }) => Effect.fromNullable(rootProject)),
+//       Effect.mapError(() => new ProjectServiceError.NotConfigured()),
+//       Effect.map((rootProject) => rootProject.getConfigFilePath()),
+//     ),
+//   captureStackTrace: true,
+//   options: () => ({ name: 'projectService-getRootTsConfig' }),
+// });
+// function getRootMostTsConfigUsingProjectReferences(
+//   projectService: ts.server.ProjectService,
+//   filePath: string
+// ): string | undefined {
+//   // Get the specific project for the file
+//   const project = projectService.getDefaultProjectForFile(
+//     filePath as ts.server.NormalizedPath,
+//     /* ensureProject */ true
+//   );
+//
+//   if (!project || project.projectKind !== ts.server.ProjectKind.Configured) {
+//     return undefined; // No tsconfig.json found
+//   }
+//
+//   // Start with the current tsconfig.json
+//   let currentConfigPath = (project as ts.server.ConfiguredProject).getConfigFilePath();
+//
+//   // Map to track all tsconfig.json files and their references
+//   const tsconfigToReferences = new Map<string, string[]>();
+//
+//   // Populate the map by iterating over all configured projects
+//   projectService.configuredProjects.forEach((configuredProject) => {
+//     const configPath = configuredProject.getConfigFilePath();
+//     const parsedCommandLine = configuredProject.getParsedCommandLine();
+//
+//     if (parsedCommandLine?.projectReferences) {
+//       tsconfigToReferences.set(
+//         configPath,
+//         parsedCommandLine.projectReferences.map((ref) => ref.path)
+//       );
+//     } else {
+//       tsconfigToReferences.set(configPath, []);
+//     }
+//   });
+//
+//   // Reverse walk the projectReferences graph
+//   while (true) {
+//     let isReferenced = false;
+//
+//     for (const [configPath, references] of tsconfigToReferences) {
+//       if (references.includes(currentConfigPath)) {
+//         currentConfigPath = configPath; // Move up to the referencing tsconfig.json
+//         isReferenced = true;
+//         break;
+//       }
+//     }
+//
+//     if (!isReferenced) {
+//       break; // Found the root-most tsconfig.json
+//     }
+//   }
+//
+//   return currentConfigPath;
+// }
 
 /**
  * Open's the file in the `ts.server.ProjectService` so it loads the project(s) that includes the file.
@@ -134,12 +214,11 @@ const getProject: {
           pipe(
             Effect.fromNullable(projectService.getDefaultProjectForFile(ts.server.toNormalizedPath(file), false)),
             Effect.catchAll(() =>
-              getRootTsConfig(projectService).pipe(
-                Effect.flatMap((tsconfigPath) =>
-                  Effect.fail(new ProjectServiceError.NoProjectFound({ file, tsconfigPath })),
-                ),
-              ),
+              Effect.fail(new ProjectServiceError.NoProjectFound({ file })),
             ),
+            Effect.flatMap((project) => project.projectKind === ts.server.ProjectKind.Configured ? Effect.succeed(project) : Effect.fail(
+              Effect.fail(new ProjectServiceError.NoProjectFound({ file, kind: project.projectKind }))
+            )),
           ),
         ),
       ),
@@ -148,6 +227,7 @@ const getProject: {
   }),
 );
 
+// TODO: better handling of ConfiguredProject
 const getProgram: {
   (options: {
     directory?: string | undefined;
@@ -174,7 +254,7 @@ const getProgram: {
                     new ProjectServiceError.NoProgramFound({
                       file,
                       projectName: project.getProjectName(),
-                      tsconfigPath,
+                      tsconfigPath: project.getConfig,
                     }),
                   ),
                 ),
@@ -321,7 +401,7 @@ const getAmbientModules: {
             Effect.all,
             (v) => v,
             Effect.map(Record.fromEntries),
-            Effect.mapError((error) => new ProjectServiceError.ParseError({ reason: error.toString() })),
+            Effect.mapError((error) => new ProjectServiceError.ParseError({ error: error.toString() })),
           );
           return t;
         }),

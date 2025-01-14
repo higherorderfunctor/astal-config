@@ -1,9 +1,11 @@
 import { Data } from 'effect';
 
+import type ts from 'typescript';
+
 export class NoProjectFound extends Data.TaggedClass('NoProjectFound')<
   Readonly<{
     file: string;
-    tsconfigPath: string;
+    kind?: Exclude<ts.server.ProjectKind, ts.server.ProjectKind.Configured>;
   }>
 > {
   message = 'No project found';
