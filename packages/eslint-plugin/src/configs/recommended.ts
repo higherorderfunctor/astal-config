@@ -257,7 +257,7 @@ export const eslintConfig: TSESLint.FlatConfig.ConfigArray = pipe(
     {
       rules: {
         // modified to skip `describe` functions in test files
-        'astal/max-lines-per-function': ['warn', { max: 25, skipBlankLines: true, skipComments: true }],
+        'astal/max-lines-per-function': ['warn', { max: 30, skipBlankLines: true, skipComments: true }],
         // modified to not count `it` and `describe` functions in test files
         'astal/max-nested-callbacks': ['warn', { max: 4 }],
         complexity: ['warn', { max: 10 }],

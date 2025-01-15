@@ -1,9 +1,9 @@
 import { Data } from 'effect';
-
 import type ts from 'typescript';
 
 export class NoProjectFound extends Data.TaggedClass('NoProjectFound')<
   Readonly<{
+    directory: string;
     file: string;
     kind?: Exclude<ts.server.ProjectKind, ts.server.ProjectKind.Configured>;
   }>

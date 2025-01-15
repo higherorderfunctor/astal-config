@@ -1,6 +1,7 @@
 import { FileSystem, Path } from '@effect/platform';
 import type { PlatformError } from '@effect/platform/Error';
 import { BunFileSystem } from '@effect/platform-bun';
+import ParcelWatcher from '@effect/platform-bun/BunFileSystem';
 import {
   Cause,
   Effect,
@@ -18,21 +19,6 @@ import {
   Stream,
   SynchronizedRef,
 } from 'effect';
-
-// NOTE: Work around for this file not being exported by @effect/platform-bun
-//       It only imports the types.
-// eslint-disable-next-line import-x/no-relative-packages
-import type { layer as ParcelWatchBackend } from '../node_modules/@effect/platform-bun/dist/dts/BunFileSystem/ParcelWatcher.d.ts';
-// NOTE: This doesn't work since it imports "@effect/platform-node-shared/NodeFileSystem/ParcelWatcher" which also seems broken
-// import { layer as _ParcelWatchBackend } from '../node_modules/@effect/platform-bun/dist/esm/BunFileSystem/ParcelWatcher.js';
-// NOTE: Work around for this file not being export by @effect/platform-node-shared
-//       It only imports the implementation as `any`
-// @ts-expect-error Types imported separately
-// eslint-disable-next-line import-x/no-relative-packages
-import { layer as _ParcelWatchBackend } from '../node_modules/@effect/platform-node-shared/dist/esm/NodeFileSystem/ParcelWatcher.js';
-
-// NOTE: Stitches the implementation with the import types
-const ParcelWatcher = _ParcelWatchBackend as typeof ParcelWatchBackend;
 
 export type Callback<E, R> = (event: FileSystem.WatchEvent) => Effect.Effect<void, E | PlatformError, R>;
 
@@ -53,7 +39,8 @@ const FileSystemWithWatchBackend = (filepath: string) =>
             Effect.acquireRelease(
               pipe(
                 // start with a fresh file system layer
-                Effect.succeed(Layer.fresh(BunFileSystem.layer.pipe(Layer.provide(ParcelWatcher)))),
+                Effect.succeed(Layer.fresh(BunFileSystem.layer)),
+                Effect.provide(Layer.fresh(ParcelWatcher.layer)),
                 // log the resource is acquired
                 Effect.tap(() => Effect.logInfo('Started watching:', filepath)),
                 // delay to allow backend to setup the layer before returning to caller
