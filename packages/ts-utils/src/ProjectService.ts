@@ -5,6 +5,7 @@ import ts from 'typescript';
 
 import * as ProjectServiceError from './ProjectServiceError/index.js';
 import * as ServerHost from './ServerHost.js';
+import { effectify } from './Effectify.js';
 
 /** FIXME: code split and cached scoped resources
  * Use aquireRelease to delete from cache
@@ -175,44 +176,6 @@ export namespace Options {
     name: (path: Path.Path, ...args: NoInfer<Args>) => string;
   }
 }
-
-/**
- * Open's the file in the `ts.server.ProjectService` so it loads the project(s) that includes the file.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const effectify: <Args extends Array<any>, A extends { result: any }, E, R>(
-  options: Options.Effectify<Args, A, E, R>,
-) => {
-  (
-    ...args: Args
-  ): (projectService: ts.server.ProjectService) => Effect.Effect<A['result'], ProjectServiceError.ProjectServiceError>;
-  (
-    projectService: ts.server.ProjectService,
-    ...args: Args
-  ): Effect.Effect<A['result'], ProjectServiceError.ProjectServiceError>;
-} =
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  <Args extends Array<any>, A extends { result: any }, E, R>({
-    body,
-    logEnd,
-    logStart,
-    name,
-  }: Options.Effectify<Args, A, E, R>) =>
-    Function.dual(2, (projectService: ts.server.ProjectService, ...args: Args) =>
-      Effect.flatMap(Path.Path, (path) =>
-        Effect.functionWithSpan({
-          body: () =>
-            pipe(
-              Effect.logInfo(...logStart(path, ...args)),
-              Effect.flatMap(() => body(projectService, path, ...args)),
-              Effect.tap((fields) => Effect.logTrace(...logEnd(fields, path, ...args))),
-              Effect.map(({ result }) => result),
-            ),
-          captureStackTrace: true,
-          options: () => ({ name: name(path, ...args) }),
-        })(),
-      ),
-    );
 
 export namespace Options {
   export interface OpenClientFile {
