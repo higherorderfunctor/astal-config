@@ -74,8 +74,8 @@ export class ClientFile
 export const checkErrors: Predicate.Refinement<
   ReadonlyArray<ts.Diagnostic> | undefined,
   Array.NonEmptyReadonlyArray<ts.Diagnostic>
-> = (diagnostics?: ReadonlyArray<ts.Diagnostic>): diagnostics is Array.NonEmptyReadonlyArray<ts.Diagnostic> =>
-  Predicate.or(Array.isEmptyReadonlyArray, Predicate.isNotUndefined)(diagnostics);
+> = //(diagnostics?: ReadonlyArray<ts.Diagnostic> | undefined): diagnostics is Array.NonEmptyReadonlyArray<ts.Diagnostic> =>
+  Predicate.compose(Predicate.isUndefined, v=>v,Array.isNonEmptyReadonlyArray);
 
 export const handleOpenConfiguredProjectResultError: (
   openConfiguredProjectResult: ts.server.OpenConfiguredProjectResult,
@@ -85,18 +85,19 @@ export const handleOpenConfiguredProjectResultError: (
   hasMixedContent: boolean;
   scriptKind: Option.Option<ScriptKind>;
   workspacePath: Option.Option<NormalizedPath.NormalizedPath>;
-}) => Effect.Effect<never> =
-  ({ configFileErrors, configFileName }) =>
+}) => Effect.Effect<readonly ts.Diagnostic[] | undefined, ProjectServiceError.DiagnosticError, never> =
+  ({ configFileErrors }) =>
   (options) =>
     Effectify.liftFailure(
       configFileErrors,
-      Predicate.or(Array.isEmptyReadonlyArray, Predicate.isUndefined),
+      checkErrors,//Predicate.and(Array.isNonEmptyReadonlyArray, Predicate.isNotUndefined),
       (configFileErrors) =>
         new ProjectServiceError.DiagnosticError({
           diagnostic: configFileErrors,
           ...options,
+          tsconfig: Option.none()
         }),
-    );
+    ).pipe(v=>v);
 
 // export const openClientFileWithNormalizedPath: (options: {
 //   fileContent: Option.Option<string>;
