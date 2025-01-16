@@ -1,5 +1,5 @@
 import type { Brand } from 'effect';
-import { Effect } from 'effect';
+import { Effect, Option, pipe } from 'effect';
 import ts from 'typescript';
 
 export type NormalizedPath = NormalizedPathBrand & string;
@@ -22,7 +22,17 @@ export const normalize: (s: string) => Effect.Effect<NormalizedPath, Error> = (s
     try: () => {
       const tsNormalizedPath = ts.server.toNormalizedPath(s);
       const normalizedPath = tsNormalizedPath as string as NormalizedPath;
+      // NOTE: normal symbol usage behavior
+      // eslint-disable-next-line security/detect-object-injection
       normalizedPath[TsNormalizedPath] = tsNormalizedPath;
       return normalizedPath;
     },
   });
+
+export const optional: (s?: string) => Effect.Effect<Option.Option<NormalizedPath>, Error> = (s) =>
+  pipe(
+    Effect.fromNullable(s),
+    Effect.flatMap(normalize),
+    Effect.asSome,
+    Effect.catchTag('NoSuchElementException', () => Effect.succeed(Option.none())),
+  );
