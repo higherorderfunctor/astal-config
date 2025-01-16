@@ -1,4 +1,5 @@
-import { Effect } from 'effect';
+import type { Predicate } from 'effect';
+import { Effect, Function } from 'effect';
 
 export namespace Options {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,3 +43,16 @@ export const effectify =
           })(),
         ),
       );
+
+export const liftFailure: {
+  <A, B extends A, C>(refinement: Predicate.Refinement<A, B>, onFailure: (b: B) => C): (a: A) => Effect.Effect<A, C>;
+  <A, B extends A, C>(a: A, refinement: Predicate.Refinement<A, B>, onFailure: (b: B) => C): Effect.Effect<A, C>;
+} = Function.dual(
+  3,
+  <A, B extends A, C>(a: A, refinement: Predicate.Refinement<A, B>, onFailure: (b: B) => C): Effect.Effect<A, C> => {
+    if (refinement(a)) {
+      return Effect.fail(onFailure(a));
+    }
+    return Effect.succeed(a);
+  },
+);

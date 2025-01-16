@@ -77,7 +77,7 @@ export const checkErrors: Predicate.Refinement<
 > = (diagnostics?: ReadonlyArray<ts.Diagnostic>): diagnostics is Array.NonEmptyReadonlyArray<ts.Diagnostic> =>
   Predicate.or(Array.isEmptyReadonlyArray, Predicate.isNotUndefined)(diagnostics);
 
-export const handleOpenClientFileErrors: (
+export const handleOpenConfiguredProjectResultError: (
   openConfiguredProjectResult: ts.server.OpenConfiguredProjectResult,
 ) => (options: {
   fileContent: Option.Option<string>;
@@ -85,16 +85,18 @@ export const handleOpenClientFileErrors: (
   hasMixedContent: boolean;
   scriptKind: Option.Option<ScriptKind>;
   workspacePath: Option.Option<NormalizedPath.NormalizedPath>;
-}) => Effect.Effect<never> = ({ configFileErrors, configFileName }) =>
-  Effect.liftPredicate(
-    configFileErrors,
-    checkErrors,
-    (configFileErrors) =>
-      new ProjectServiceError.DiagnosticError({
-        diagnostic: configFileErrors,
-        ...args,
-      }),
-  );
+}) => Effect.Effect<never> =
+  ({ configFileErrors, configFileName }) =>
+  (options) =>
+    Effectify.liftFailure(
+      configFileErrors,
+      Predicate.or(Array.isEmptyReadonlyArray, Predicate.isUndefined),
+      (configFileErrors) =>
+        new ProjectServiceError.DiagnosticError({
+          diagnostic: configFileErrors,
+          ...options,
+        }),
+    );
 
 // export const openClientFileWithNormalizedPath: (options: {
 //   fileContent: Option.Option<string>;
