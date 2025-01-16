@@ -7,6 +7,7 @@ import * as NormalizedPath from './NormalizedPath.js';
 import * as ProjectService from './ProjectService.js';
 import * as ProjectServiceError from './ProjectServiceError/index.js';
 import * as ServerHost from './ServerHost.js';
+import * as TsProjectService from './TsProjectService.js';
 
 export {
   ClientFile,
@@ -17,5 +18,6 @@ export {
   ProjectService,
   ProjectServiceError,
   ServerHost,
+  TsProjectService,
 };
 // codegen:end

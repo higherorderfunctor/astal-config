@@ -1,94 +1,146 @@
-import { Array, Effect, Struct } from 'effect';
+import { Path } from '@effect/platform';
+import type { Scope } from 'effect';
+import { Array, Data, Effect, Equal, Hash, Inspectable, Option, pipe, Struct } from 'effect';
 import ts from 'typescript';
 
-import { effectify } from './Effectify.js';
+import * as Effectify from './Effectify.js';
 import * as NormalizedPath from './NormalizedPath.js';
 import * as ProjectServiceError from './ProjectServiceError/index.js';
+import * as TsProjectService from './TsProjectService.js';
 
+// Unknown = 0,
+// JS = 1,
+// JSX = 2,
+// TS = 3,
+// TSX = 4,
+// External = 5,
+// JSON = 6,
+/// **
+// * Used on extensions that doesn't define the ScriptKind but the content defines it.
+// * Deferred extensions are going to be included in all project contexts.
+// */
+// Deferred = 7,
+export const { ScriptKind } = ts;
+export type ScriptKind = ts.ScriptKind;
 
-export namespace ClientFile {
-    type ScriptKind = { [K in keyof ts.ScriptKind]: ts.ScriptKind[K] };
-    const ScriptKind: ScriptKind = ts.ScriptKind;
-        //Unknown = 0,
-        //JS = 1,
-        //JSX = 2,
-        //TS = 3,
-        //TSX = 4,
-        //External = 5,
-        //JSON = 6,
-        ///**
-        // * Used on extensions that doesn't define the ScriptKind but the content defines it.
-        // * Deferred extensions are going to be included in all project contexts.
-        // */
-        //Deferred = 7,
-    }
-}
 export namespace Options {
   export interface OpenClientFile {
-    file: string;
     fileContent?: string;
+    filePath: string;
     hasMixedContent?: boolean;
-    scriptKind?: ts.ScriptKind;
-    workspace: string;
+    scriptKind?: ScriptKind;
+    workspacePath?: string;
   }
 }
 
-export namespace ClientFile {
-  export const FilePath = Symbol.for('@astal-config/ts-utils/ClientFile/FilePath');
-  export const WorkspacePath = Symbol.for('@astal-config/ts-utils/ClientFile/WorkspacePath');
-};
+export class ClientFile
+  extends Data.TaggedClass('ClientFile')<{
+    filePath: NormalizedPath.NormalizedPath;
+    hasMixedContent: boolean;
+    scriptKind: Option.Option<ScriptKind>; // TODO: remove
+    tsconfig: Option.Option<NormalizedPath.NormalizedPath>;
+    workspacePath: Option.Option<NormalizedPath.NormalizedPath>;
+  }>
+  implements Equal.Equal, Inspectable.Inspectable
+{
+  [Equal.symbol](that: unknown): boolean {
+    return that instanceof ClientFile && Equal.equals(Hash.hash(this), Hash.hash(that));
+  }
 
-export interface ClientFile {
-  hasMixedContent: boolean;
-  scriptKind?: ts.ScriptKind; // TODO: remove
-  tsconfig: NormalizedPath.NormalizedPath;
-  [ClientFile.FilePath]: NormalizedPath.NormalizedPath;
-  [ClientFile.WorkspacePath]: NormalizedPath.NormalizedPath;
+  [Hash.symbol](): number {
+    return Hash.cached(this, Hash.hash(this.filePath));
+  }
+
+  [Inspectable.NodeInspectSymbol]() {
+    return this.toJSON();
+  }
+
+  toJSON() {
+    return {
+      _tag: this._tag,
+      filePath: this.filePath,
+      hasMixedContent: this.hasMixedContent,
+      scriptKind: this.scriptKind,
+      tsconfig: this.tsconfig,
+      workspacePath: this.workspacePath,
+    };
+  }
+
+  toString() {
+    return Inspectable.format(this.toJSON());
+  }
 }
 
-export const open = effectify({
-  body: (projectService, _, { file, fileContent, hasMixedContent, scriptKind, workspace }: Options.OpenClientFile) =>
-    Effect.acquireRelease(Effect.gen(function* () {
-      const normalizedFilePath = yield* NormalizedPath.normalize(file);
-      const normalizedWorkspacePath = yield* NormalizedPath.normalize(workspace);
-
-      const result = projectService.openClientFileWithNormalizedPath(
-        normalizedFilePath[NormalizedPath.TsNormalizedPath],
-        fileContent,
-        scriptKind,
-        hasMixedContent,
-        normalizedWorkspacePath[NormalizedPath.TsNormalizedPath],
-      );
-
-      if (result.configFileErrors && Array.isNonEmptyReadonlyArray(result.configFileErrors)) {
-        return yield* Effect.fail(
-          new ProjectServiceError.DiagnosticError({
-            diagnostic: result.configFileErrors,
-            directory: workspace,
-            file,
-            kind: scriptKind,
-          }),
+export const open = Effectify.effectify({
+  body: (options: Options.OpenClientFile) =>
+    Effect.acquireRelease(
+      Effect.gen(function* () {
+        const projectService = yield* TsProjectService.TsProjectService;
+        const filePath = yield* NormalizedPath.normalize(options.filePath);
+        const workspacePath = yield* pipe(
+          Effect.fromNullable(options.workspacePath),
+          Effect.flatMap(NormalizedPath.normalize),
+          Effect.option,
         );
-      }
-      return yield* Effect.succeed({ result:{
-        hasMixedContent,
-        scriptKind, // TODO: remove
-        tsconfig: yield* NormalizedPath.normalize(result.configFileName),
-        [ClientFile.FilePath]: normalizedFilePath,
-        [ClientFile.WorkspacePath]: normalizedWorkspacePath,
-      } });
-    }),
-    ({ result }) => Effect.succeed(
-        projectService.closeClientFile(result[ClientFile.FilePath])
-      )
+        const hasMixedContent = options.hasMixedContent ?? false;
+        const scriptKind = Option.fromNullable(options.scriptKind);
+
+        // openClientFileWithNormalizedPath(
+        //  fileName: NormalizedPath,
+        //  fileContent?: string,
+        //  scriptKind?: ScriptKind,
+        //  hasMixedContent?: boolean,
+        //  projectRootPath?: NormalizedPath): OpenConfiguredProjectResult;
+        // );
+        const { configFileErrors, configFileName } = projectService.openClientFileWithNormalizedPath(
+          filePath[NormalizedPath.TsNormalizedPath],
+          options.fileContent,
+          options.scriptKind,
+          hasMixedContent,
+          pipe(
+            Option.map(workspacePath, (_) => _[NormalizedPath.TsNormalizedPath]),
+            Option.getOrUndefined,
+          ),
+        );
+
+        const tsconfig = yield* pipe(
+          Effect.fromNullable(configFileName),
+          Effect.flatMap(NormalizedPath.normalize),
+          Effect.option,
+        );
+
+        if (configFileErrors && Array.isNonEmptyReadonlyArray(configFileErrors)) {
+          return yield* Effect.fail(
+            new ProjectServiceError.DiagnosticError({
+              diagnostic: configFileErrors,
+              filePath,
+              hasMixedContent,
+              scriptKind,
+              tsconfig,
+              workspacePath,
+            }),
+          );
+        }
+        return {
+          result: new ClientFile({
+            filePath,
+            hasMixedContent,
+            scriptKind,
+            tsconfig,
+            workspacePath,
+          }),
+        };
+      }),
+      ({ result }) =>
+        Effect.map(TsProjectService.TsProjectService, (projectService) => {
+          projectService.closeClientFile(result.filePath);
+        }),
+    ).pipe((v) => v),
+  logEnd: ({ result }) => Effect.succeed(['Opened client file', result]),
+  logStart: (options) => Effect.succeed(['Opening client file', Struct.omit(options, 'fileContent')]),
+  name: ({ filePath, workspacePath }) =>
+    Effect.map(
+      Path.Path,
+      (path) => `projectService-openClientFile-${path.relative(workspacePath ?? process.cwd(), filePath)}`,
     ),
-  logEnd: ({ result }, _, options) => [
-    'Opened client file',
-    {
-      ...Struct.omit(options, 'fileContent'),
-      tsconfig: result.configFileName,
-    },
-  ],
-  logStart: (_, options) => ['Opening client file', Struct.omit(options, 'fileContent')],
-  name: (path, { directory, file }) => `projectService-openClientFile-${path.relative(directory, file)}`,
 });
