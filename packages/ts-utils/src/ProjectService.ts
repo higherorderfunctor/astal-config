@@ -1,11 +1,11 @@
-import { Path } from '@effect/platform';
+import type { Path } from '@effect/platform';
 import type { Layer, Types } from 'effect';
 import { Array, Effect, Function, identity, Match, pipe, Record, Runtime, Schema as S, Struct } from 'effect';
 import ts from 'typescript';
 
+import { effectify } from './Effectify.js';
 import * as ProjectServiceError from './ProjectServiceError/index.js';
 import * as ServerHost from './ServerHost.js';
-import { effectify } from './Effectify.js';
 
 /** FIXME: code split and cached scoped resources
  * Use aquireRelease to delete from cache
@@ -179,16 +179,17 @@ export namespace Options {
 
 export namespace Options {
   export interface OpenClientFile {
-    directory: string;
     file: string;
     fileContent?: string;
     kind?: ts.ScriptKind;
+    workspace: string;
   }
 }
-
+// configFileName?: NormalizedPath;
+// configFileErrors?: readonly Diagnostic[];
 const openClientFile = effectify({
-  body: (projectService, _, { directory, file, fileContent, kind }: Options.OpenClientFile) => {
-    const result = projectService.openClientFile(file, fileContent, kind, directory);
+  body: (projectService, _, { file, fileContent, kind, workspace }: Options.OpenClientFile) => {
+    const result = projectService.openClientFileWithNormalizedPath(file, fileContent, kind, workspace);
     if (result.configFileErrors && Array.isNonEmptyReadonlyArray(result.configFileErrors)) {
       return Effect.fail(
         new ProjectServiceError.DiagnosticError({
