@@ -1,8 +1,9 @@
-import type { Layer } from 'effect';
-import { Effect, Function, Match, pipe, Runtime } from 'effect';
+import type { Layer, Option, Scope } from 'effect';
+import { Chunk, Effect, flow, Function, Match, pipe, Runtime, Sink, Stream } from 'effect';
 import ts from 'typescript';
 
 import * as ServerHost from './ServerHost.js';
+import { Emit } from 'effect/StreamEmit';
 
 /** FIXME: code split and cached scoped resources
  * Use aquireRelease to delete from cache
@@ -15,40 +16,71 @@ const doNothing = (): void => {};
 /**
  * Log a `ts.server.Msg`'s in a specific Effect runtime.
  */
-const log = (
-  runSync: <A, E>(effect: Effect.Effect<A, E>) => A,
-): {
-  (type: ts.server.Msg): (s: string) => void;
-  (s: string, type: ts.server.Msg): void;
-} =>
-  Function.dual(2, (s: string, type: ts.server.Msg) => {
+const log: {
+  (type: ts.server.Msg): (s: string) => Effect.Effect<Chunk.Chunk<never>, Option.Option<never>>;
+  (s: string, type: ts.server.Msg): Effect.Effect<Chunk.Chunk<never>, Option.Option<never>>;
+} = Function.dual(
+  2,
+  (s: string, type: ts.server.Msg): Effect.Effect<Chunk.Chunk<never>, Option.Option<never>> =>
     Match.value(type).pipe(
-      Match.when(ts.server.Msg.Err, (type) => {
-        pipe(Effect.logError(s, { type }), runSync);
-      }),
-      Match.when(ts.server.Msg.Perf, (type) => {
-        pipe(Effect.logError(s, { type }), runSync);
-      }),
-      Match.orElse((type) => {
-        pipe(Effect.logInfo(s, { type }), runSync);
-      }),
-    );
-  });
+      Match.when(ts.server.Msg.Err, (type) => Effect.logError(s, { type })),
+      Match.when(ts.server.Msg.Perf, (type) => Effect.logDebug(s, { type })),
+      Match.orElse((type) => Effect.logInfo(s, { type })),
+      Effect.map(() => Chunk.empty()),
+    ),
+);
 
 /**
  * Create a ts.server.Logger` that logs to a specific Effect runtime.
  */
-const makeLogger: (runSync: <A, E>(effect: Effect.Effect<A, E>) => A) => ts.server.Logger = (runSync) => ({
-  close: doNothing,
-  endGroup: doNothing,
-  getLogFileName: (): undefined => undefined,
-  hasLevel: (): boolean => true,
-  info: log(runSync)(ts.server.Msg.Info),
-  loggingEnabled: (): boolean => true,
-  msg: log(runSync),
-  perftrc: log(runSync)(ts.server.Msg.Perf),
-  startGroup: doNothing,
-});
+// const makeLogger: (runSync: <A, E>(effect: Effect.Effect<A, E>) => A) => ts.server.Logger = (runSync) => ({
+//   close: doNothing,
+//   endGroup: doNothing,
+//   getLogFileName: (): undefined => undefined,
+//   hasLevel: (): boolean => true,
+//   info: log(runSync)(ts.server.Msg.Info),
+//   loggingEnabled: (): boolean => true,
+//   msg: log(runSync),
+//   perftrc: log(runSync)(ts.server.Msg.Perf),
+//   startGroup: doNothing,
+// });
+
+const andForget = <A>(_promise: Promise<A>): void => {};
+
+// export interface Emit<in R, in E, in A, out B> extends EmitOps<R, E, A, B> {
+//   (f: Effect.Effect<Chunk.Chunk<A>, Option.Option<E>, R>): Promise<B>
+// }
+const makeLogger2 = <A>(f: (logger: ts.server.Logger) => A): Effect.Effect<A, never, Scope.Scope> =>
+  pipe(
+    Stream.async((emit: Emit<never, never, void, void>) => {
+      return f({
+        close: doNothing,
+        endGroup: doNothing,
+        getLogFileName: (): undefined => undefined,
+        hasLevel: (): boolean => true,
+        info: flow(log(ts.server.Msg.Info), emit, andForget),
+        loggingEnabled: (): boolean => true,
+        msg: flow(log, emit, andForget),
+        perftrc: flow(log(ts.server.Msg.Perf), emit, andForget),
+        startGroup: doNothing,
+      });
+    }),
+    Stream.runScoped(Sink.drain),
+    Effect.forkScoped,
+    Effect.map(() => ),
+  );
+
+// (runSync: <A, E>(effect: Effect.Effect<A, E>) => A) => ts.server.Logger = (runSync) => ({
+//   close: doNothing,
+//   endGroup: doNothing,
+//   getLogFileName: (): undefined => undefined,
+//   hasLevel: (): boolean => true,
+//   info: log(runSync)(ts.server.Msg.Info),
+//   loggingEnabled: (): boolean => true,
+//   msg: log(runSync),
+//   perftrc: log(runSync)(ts.server.Msg.Perf),
+//   startGroup: doNothing,
+// });
 
 /**
  * Get the root most `tsconfig.json` for the first configured project.
