@@ -91,7 +91,7 @@ importers:
         version: link:vendor/@types/girs__gjs
       astal:
         specifier: github:Aylur/astal#path:/lang/gjs
-        version: https://codeload.github.com/Aylur/astal/tar.gz/cac0fc63bfe098b26753db8262f5d95ac42b281b#path:/lang/gjs
+        version: https://codeload.github.com/Aylur/astal/tar.gz/897c6d810acfd31e6cc55df7692755b177a84fcb#path:/lang/gjs
       esbuild:
         specifier: 0.24.2
         version: 0.24.2
@@ -1742,8 +1742,8 @@ packages:
   '@types/minimatch@5.1.2':
     resolution: {integrity: sha512-K0VQKziLUWkVKiRVrx4a40iPaxTUefQmjtkQofBkYRcoaaL/8rhwDWww9qWbrgicNOgnpIsMxyNIUM4+n6dUIA==}
 
-  '@types/ms@0.7.34':
-    resolution: {integrity: sha512-nG96G3Wp6acyAgJqGasjODb+acrI7KltPiRxzHPXnP3NgI28bpQDRv53olbqGXbfcgF5aiiHmO3xpwEpS5Ld9g==}
+  '@types/ms@2.1.0':
+    resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
 
   '@types/node@12.20.55':
     resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
@@ -1947,8 +1947,8 @@ packages:
     resolution: {integrity: sha512-LFRg7178Fw5R4FAEwZxVqiRI8IxSM+Ay2UBrHoCerXNme+kMMMfz7T3xDGV/c2fer87hcrtgJGsnSOfUrPK6ng==}
     engines: {node: '>=18'}
 
-  astal@https://codeload.github.com/Aylur/astal/tar.gz/cac0fc63bfe098b26753db8262f5d95ac42b281b#path:/lang/gjs:
-    resolution: {path: /lang/gjs, tarball: https://codeload.github.com/Aylur/astal/tar.gz/cac0fc63bfe098b26753db8262f5d95ac42b281b}
+  astal@https://codeload.github.com/Aylur/astal/tar.gz/897c6d810acfd31e6cc55df7692755b177a84fcb#path:/lang/gjs:
+    resolution: {path: /lang/gjs, tarball: https://codeload.github.com/Aylur/astal/tar.gz/897c6d810acfd31e6cc55df7692755b177a84fcb}
     version: 0.1.0
     engines: {gjs: '>=1.79.0'}
     os: [linux]
@@ -4449,8 +4449,8 @@ packages:
   undici-types@6.20.0:
     resolution: {integrity: sha512-Ny6QZ2Nju20vw1SRHe3d9jVu6gJ+4e3+MMpqu7pqE5HT6WsTSlce++GQmK5UXS8mzV8DSYHrQH+Xrf2jVcuKNg==}
 
-  undici@7.2.2:
-    resolution: {integrity: sha512-j/M0BQelSQHcq2Fhc1fUMszXtLx+RsZR5IkXx07knZMICLTzRzsW0tbTI9e9N40RftPUkFP8j4qOjKJa5aTCzw==}
+  undici@7.2.3:
+    resolution: {integrity: sha512-2oSLHaDalSt2/O/wHA9M+/ZPAOcU2yrSP/cdBYJ+YxZskiPYDSqHbysLSlD7gq3JMqOoJI5O31RVU3BxX/MnAA==}
     engines: {node: '>=20.18.1'}
 
   unist-util-stringify-position@2.0.3:
@@ -5150,7 +5150,7 @@ snapshots:
       '@effect/platform-node-shared': 0.23.1(@effect/platform@0.73.1(effect@3.12.4))(effect@3.12.4)
       effect: 3.12.4
       mime: 3.0.0
-      undici: 7.2.2
+      undici: 7.2.3
       ws: 8.18.0
     transitivePeerDependencies:
       - bufferutil
@@ -5869,7 +5869,7 @@ snapshots:
 
   '@types/debug@4.1.12':
     dependencies:
-      '@types/ms': 0.7.34
+      '@types/ms': 2.1.0
 
   '@types/dedent@0.7.0': {}
 
@@ -5928,7 +5928,7 @@ snapshots:
 
   '@types/minimatch@5.1.2': {}
 
-  '@types/ms@0.7.34': {}
+  '@types/ms@2.1.0': {}
 
   '@types/node@12.20.55': {}
 
@@ -6186,7 +6186,7 @@ snapshots:
 
   ast-module-types@6.0.0: {}
 
-  astal@https://codeload.github.com/Aylur/astal/tar.gz/cac0fc63bfe098b26753db8262f5d95ac42b281b#path:/lang/gjs: {}
+  astal@https://codeload.github.com/Aylur/astal/tar.gz/897c6d810acfd31e6cc55df7692755b177a84fcb#path:/lang/gjs: {}
 
   available-typed-arrays@1.0.7:
     dependencies:
@@ -9017,7 +9017,7 @@ snapshots:
 
   undici-types@6.20.0: {}
 
-  undici@7.2.2: {}
+  undici@7.2.3: {}
 
   unist-util-stringify-position@2.0.3:
     dependencies:

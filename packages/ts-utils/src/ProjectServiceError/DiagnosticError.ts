@@ -24,7 +24,7 @@ export class DiagnosticError extends Data.TaggedClass('NotConfigured')<{
   filePath: NormalizedPath.NormalizedPath;
   hasMixedContent: boolean;
   scriptKind: Option.Option<ClientFile.ScriptKind>; // TODO: remove
-  tsconfig: Option.Option<NormalizedPath.NormalizedPath>;
+  tsconfigPath: Option.Option<NormalizedPath.NormalizedPath>;
   workspacePath: Option.Option<NormalizedPath.NormalizedPath>;
 }> {
   message = 'Diagnostic errors occurred';

@@ -13,13 +13,11 @@ export namespace Options {
     in Args extends Array<any>,
     in out A,
     out E,
-    out R1,
-    out R2,
-    // out R3,
-    // out R4,
+    out Rb,
+    out Ro,
   > {
-    body: Body<Args, A, E, R1>;
-    options: (...args: Args) => Effect.Effect<Effect.FunctionWithSpanOptions, never, R2>;
+    body: Body<Args, A, E, Rb>;
+    options: (...args: Args) => Effect.Effect<Effect.FunctionWithSpanOptions, never, Ro>;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -31,8 +29,8 @@ export namespace Options {
  */
 export const effectify =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  <Args extends Array<any>, A, E, R1, R2>({ body, options }: Options.Effectify<Args, A, E, R1, R2>) =>
-    (...args: Args): Effect.Effect<A, E, R1 | R2> =>
+  <Args extends Array<any>, A, E, Rb, Ro>({ body, options }: Options.Effectify<Args, A, E, Rb, Ro>) =>
+    (...args: Args): Effect.Effect<A, E, Rb | Ro> =>
       Effect.succeed({ args }).pipe(
         Effect.bind('options', () => options(...args)),
         Effect.flatMap(({ args, options }) =>
