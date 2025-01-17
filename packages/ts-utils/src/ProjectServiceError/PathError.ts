@@ -1,9 +1,12 @@
 import { Data, Inspectable } from 'effect';
 
-export class PathError extends Data.TaggedError('PathError')<{
-  error: unknown;
-  path: string;
-}> implements Inspectable.Inspectable {
+export class PathError
+  extends Data.TaggedError('PathError')<{
+    error: unknown;
+    path: string;
+  }>
+  implements Inspectable.Inspectable
+{
   message = 'Path error occurred';
 
   [Inspectable.NodeInspectSymbol]() {
@@ -18,7 +21,7 @@ export class PathError extends Data.TaggedError('PathError')<{
       name: this.name,
       path: this.path,
       stack: this.stack,
-    }
+    };
   }
 
   toString() {

@@ -123,16 +123,15 @@ const openClientFile: (
   Effect.bind('projectService', () => ProjectService.ProjectService),
   Effect.bind('result', ({ fileContent, filePath, hasMixedContent, projectService, scriptKind, workspacePath }) =>
     Effect.succeed(
-      projectService.projectService().openClientFileWithNormalizedPath(
-        filePath,
-        Option.getOrUndefined(fileContent),
-        Option.getOrUndefined(scriptKind),
-        hasMixedContent,
-        pipe(
-          Option.map(workspacePath, (_) => _[NormalizedPath.TsNormalizedPath]),
-          Option.getOrUndefined,
+      projectService
+        .projectService()
+        .openClientFileWithNormalizedPath(
+          filePath,
+          Option.getOrUndefined(fileContent),
+          Option.getOrUndefined(scriptKind),
+          hasMixedContent,
+          Option.getOrUndefined(workspacePath),
         ),
-      ),
     ),
   ),
   Effect.bind('tsconfigPath', OpenConfiguredProjectResult.getTsconfigPath),
@@ -172,6 +171,7 @@ export const open: (
             workspacePath,
           }),
         ),
+        Effect.tap((clientFile) => Effect.log('Opened client file', clientFile)), // TODO: verbose
       ),
       (clientFile) =>
         pipe(

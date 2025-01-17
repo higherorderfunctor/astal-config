@@ -1,11 +1,10 @@
 import type { Brand } from 'effect';
 import { Effect, Option, pipe } from 'effect';
 import ts from 'typescript';
+
 import * as ProjectServiceError from './ProjectServiceError/index.js';
 
-export type NormalizedPath = NormalizedPathBrand & string & TsNormalizedPath;
-
-export const TsNormalizedPath = Symbol.for('TsNormalizedPath');
+export type NormalizedPath = NormalizedPathBrand & string & TsNormalizedPathBrand;
 
 export interface NormalizedPathBrand {
   [Brand.BrandTypeId]: {
@@ -14,16 +13,18 @@ export interface NormalizedPathBrand {
   };
 }
 
-export type TsNormalizedPath = typeof TsNormalizedPath;
+export interface TsNormalizedPathBrand {
+  __normalizedPathTag: '__normalizedPathTag';
+};
 
 export const normalize: (s: string) => Effect.Effect<NormalizedPath, Error> = (s: string) =>
   Effect.try({
-    catch: (cause) => new ProjectServiceError.PathError({ path: s, error: cause}),
+    catch: (cause) => new ProjectServiceError.PathError({ error: cause, path: s }),
     try: () => {
       const tsNormalizedPath = ts.server.toNormalizedPath(s);
       const normalizedPath = tsNormalizedPath as string as NormalizedPath;
       // NOTE: normal symbol usage behavior
-      // eslint-disable-next-line security/detect-object-injection
+
       // normalizedPath[TsNormalizedPath] = tsNormalizedPath;
       return normalizedPath;
     },

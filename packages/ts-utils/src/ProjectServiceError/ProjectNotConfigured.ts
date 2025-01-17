@@ -1,7 +1,7 @@
 import { Data } from 'effect';
 import type ts from 'typescript';
 
-export class ProjectNotConfigured extends Data.TaggedClass('ProjectNotConfigured')<{
+export class ProjectNotConfigured extends Data.TaggedError('ProjectNotConfigured')<{
   directory: string;
   file: string;
   kind: ts.server.ProjectKind;
