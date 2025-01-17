@@ -1,7 +1,7 @@
 import { FileSystem, Path } from '@effect/platform';
 import type { PlatformError } from '@effect/platform/Error';
 import { BunFileSystem } from '@effect/platform-bun';
-import ParcelWatcher from '@effect/platform-bun/BunFileSystem';
+import * as ParcelWatcher from '@effect/platform-bun/BunFileSystem/ParcelWatcher';
 import {
   Cause,
   Effect,

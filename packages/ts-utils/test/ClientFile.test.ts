@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { BunContext } from '@effect/platform-bun';
-import { Cause, Effect, flow, Logger } from 'effect';
+import { Cause, Effect, flow, Inspectable, Logger } from 'effect';
 
 import { ClientFile, ProjectService } from '@astal-config/ts-utils';
 
@@ -10,8 +10,8 @@ describe('FileWatcher', () => {
     Effect.runPromise(
       Effect.gen(function* () {
         const clientFile = yield* ClientFile.open({
-          filePath: './fixtures/project-a/index.ts',
-          workspacePath: './fixtures',
+          filePath: `${__dirname}/fixtures/project-a/index.ts`,
+          workspacePath: `${__dirname}/fixtures`,
         });
         expect(clientFile).toMatchObject({ asdf: 'asdf' });
       }).pipe(
@@ -19,7 +19,7 @@ describe('FileWatcher', () => {
         Effect.provide(ProjectService.layer),
         Effect.provide(BunContext.layer),
         Effect.sandbox,
-        Effect.tapErrorCause(flow(Cause.pretty, Effect.logFatal)),
+        Effect.tapError(flow(Inspectable.toJSON, Effect.logWarning)),
         Effect.provide(Logger.structured),
       ),
     ));

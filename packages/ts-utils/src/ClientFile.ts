@@ -119,11 +119,12 @@ const openClientFile: (
   options: Omit<Fields, 'tsconfigPath'>,
 ) => Effect.Effect<ClientFile, ProjectServiceError.DiagnosticError, ProjectService.ProjectService> = flow(
   Effect.succeed,
+  Effect.tap(Effect.logDebug),
   Effect.bind('projectService', () => ProjectService.ProjectService),
   Effect.bind('result', ({ fileContent, filePath, hasMixedContent, projectService, scriptKind, workspacePath }) =>
     Effect.succeed(
       projectService.projectService().openClientFileWithNormalizedPath(
-        filePath[NormalizedPath.TsNormalizedPath],
+        filePath,
         Option.getOrUndefined(fileContent),
         Option.getOrUndefined(scriptKind),
         hasMixedContent,
