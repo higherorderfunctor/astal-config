@@ -1,9 +1,9 @@
-import type { Layer, Option, Scope } from 'effect';
-import { Chunk, Effect, flow, Function, Match, pipe, Runtime, Sink, Stream } from 'effect';
+import type { Cause, Fiber, Layer, Scope } from 'effect';
+import { Chunk, Effect, flow, Function, Inspectable, Match, Option, pipe, Runtime, Sink, Stream, SynchronizedRef } from 'effect';
+import type { Emit } from 'effect/StreamEmit';
 import ts from 'typescript';
 
 import * as ServerHost from './ServerHost.js';
-import { Emit } from 'effect/StreamEmit';
 
 /** FIXME: code split and cached scoped resources
  * Use aquireRelease to delete from cache
@@ -50,10 +50,12 @@ const andForget = <A>(_promise: Promise<A>): void => {};
 // export interface Emit<in R, in E, in A, out B> extends EmitOps<R, E, A, B> {
 //   (f: Effect.Effect<Chunk.Chunk<A>, Option.Option<E>, R>): Promise<B>
 // }
-const makeLogger2 = <A>(f: (logger: ts.server.Logger) => A): Effect.Effect<A, never, Scope.Scope> =>
+const makeLogger2 = <R>(
+  f: (logger: ts.server.Logger) => Effect.Effect<void, never, R> | void,
+): Effect.Effect<Fiber.RuntimeFiber<void>, never, R | Scope.Scope> =>
   pipe(
-    Stream.async((emit: Emit<never, never, void, void>) => {
-      return f({
+    Stream.async((emit: Emit<never, never, void, void>) =>
+      f({
         close: doNothing,
         endGroup: doNothing,
         getLogFileName: (): undefined => undefined,
@@ -63,12 +65,85 @@ const makeLogger2 = <A>(f: (logger: ts.server.Logger) => A): Effect.Effect<A, ne
         msg: flow(log, emit, andForget),
         perftrc: flow(log(ts.server.Msg.Perf), emit, andForget),
         startGroup: doNothing,
-      });
-    }),
+      }),
+    ),
     Stream.runScoped(Sink.drain),
     Effect.forkScoped,
-    Effect.map(() => ),
   );
+
+// TODO: log
+export class ProjectService extends Effect.Service<ProjectService>()('ProjectService', {
+  accessors: true,
+  dependencies: [ServerHost.layer],
+  scoped: Effect.scoped(Effect.gen(function* () {
+    const host: ts.server.ServerHost = yield* ServerHost.ServerHost;
+    const projectService = yield* pipe(
+      SynchronizedRef.make(Option.none<ts.server.ProjectService>()),
+      Effect.flatMap((ref) =>
+        //Effect.suspend(() =>
+          makeLogger2((logger) => {
+          return SynchronizedRef.update(ref, () =>
+            Option.some(
+              new ts.server.ProjectService({
+                cancellationToken: { isCancellationRequested: (): boolean => false },
+                eventHandler: (e): void => {
+                  logger.info(Inspectable.stringifyCircular(e));
+                },
+                host,
+                jsDocParsingMode: ts.JSDocParsingMode.ParseNone,
+                logger,
+                session: undefined,
+                useInferredProjectPerProjectRoot: false,
+                useSingleInferredProject: false,
+              }),
+            )).pipe(Effect.map(() => ));
+          }).pipe(v=>v),
+        ),
+      //),
+      v=>v,
+      Effect.flatMap((ref) => Effect.suspend(() => pipe(
+        SynchronizedRef.get(ref),
+        v=>v,
+        Effect.flatMap(Effect.flatMap(SynchronizedRef.make)),
+        v=>v,
+      ))),
+      v=>v,
+      //Effect.flatMap(flow(Effect.flatMap((a) => SynchronizedRef.make(a)))),
+      v=>v
+    );
+    // host: ServerHost;
+    // logger: Logger;
+    // cancellationToken: HostCancellationToken;
+    // useSingleInferredProject: boolean;
+    // useInferredProjectPerProjectRoot: boolean;
+    // typingsInstaller?: ITypingsInstaller;
+    // eventHandler?: ProjectServiceEventHandler;
+    // canUseWatchEvents?: boolean;
+    // suppressDiagnosticEvents?: boolean;
+    // throttleWaitMilliseconds?: number;
+    // globalPlugins?: readonly string[];
+    // pluginProbeLocations?: readonly string[];
+    // allowLocalPluginLoads?: boolean;
+    // typesMapLocation?: string;
+    // serverMode?: LanguageServiceMode;
+    // session: Session<unknown> | undefined;
+    // jsDocParsingMode?: JSDocParsingMode;
+
+    return {
+      projectService: () => projectService,
+      // getAmbientModules: (file: string, directory?: string) => getAmbientModules(projectService, { directory, file }),
+      // getProgram: (file: string, directory?: string) => getProgram(projectService, { directory, file }),
+      // getProject: (file: string, directory?: string) => getProject(projectService, { directory, file }),
+      // getSourceFile: (file: string, directory?: string) => getSourceFile(projectService, { directory, file }),
+      // getTypeChecker: (file: string, directory?: string) => getTypeChecker(projectService, { directory, file }),
+      // openClientFile: (file: string, directory?: string) => openClientFile(projectService, { directory, file }),
+    };
+  }).pipe(v=>v)),
+}) {}
+
+// FIXME: error type
+export const layer: Layer.Layer<ProjectService, Cause.NoSuchElementException, never> = ProjectService.Default;
+
 
 // (runSync: <A, E>(effect: Effect.Effect<A, E>) => A) => ts.server.Logger = (runSync) => ({
 //   close: doNothing,
@@ -529,57 +604,3 @@ const makeLogger2 = <A>(f: (logger: ts.server.Logger) => A): Effect.Effect<A, ne
 //     options: (_, { file }) => ({ name: `projectService-gettAmbientModules-${file}` }), // TODO: relative
 //   }),
 // );
-
-// TODO: log
-export class ProjectService extends Effect.Service<ProjectService>()('ProjectService', {
-  accessors: true,
-  dependencies: [ServerHost.layer],
-  effect: Effect.gen(function* () {
-    const runSync = Runtime.runSync(yield* Effect.runtime());
-    const host: ts.server.ServerHost = yield* ServerHost.ServerHost;
-    const projectService = new ts.server.ProjectService({
-      cancellationToken: { isCancellationRequested: (): boolean => false },
-      eventHandler: (e): void => {
-        pipe(Effect.logInfo(e), runSync);
-      },
-      host,
-      jsDocParsingMode: ts.JSDocParsingMode.ParseNone,
-      logger: makeLogger(runSync),
-      session: undefined,
-      useInferredProjectPerProjectRoot: false,
-      useSingleInferredProject: false,
-      // host: ServerHost;
-      // logger: Logger;
-      // cancellationToken: HostCancellationToken;
-      // useSingleInferredProject: boolean;
-      // useInferredProjectPerProjectRoot: boolean;
-      // typingsInstaller?: ITypingsInstaller;
-      // eventHandler?: ProjectServiceEventHandler;
-      // canUseWatchEvents?: boolean;
-      // suppressDiagnosticEvents?: boolean;
-      // throttleWaitMilliseconds?: number;
-      // globalPlugins?: readonly string[];
-      // pluginProbeLocations?: readonly string[];
-      // allowLocalPluginLoads?: boolean;
-      // typesMapLocation?: string;
-      // serverMode?: LanguageServiceMode;
-      // session: Session<unknown> | undefined;
-      // jsDocParsingMode?: JSDocParsingMode;
-    });
-
-    return {
-      projectService: () => projectService,
-      // getAmbientModules: (file: string, directory?: string) => getAmbientModules(projectService, { directory, file }),
-      // getProgram: (file: string, directory?: string) => getProgram(projectService, { directory, file }),
-      // getProject: (file: string, directory?: string) => getProject(projectService, { directory, file }),
-      // getSourceFile: (file: string, directory?: string) => getSourceFile(projectService, { directory, file }),
-      // getTypeChecker: (file: string, directory?: string) => getTypeChecker(projectService, { directory, file }),
-      // openClientFile: (file: string, directory?: string) => openClientFile(projectService, { directory, file }),
-    };
-  }),
-}) {}
-
-export const layer: Layer.Layer<ProjectService> = ProjectService.Default;
-
-export const layerNoDeps: Layer.Layer<ProjectService, never, ServerHost.ServerHost> =
-  ProjectService.DefaultWithoutDependencies;
