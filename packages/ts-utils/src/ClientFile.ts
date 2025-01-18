@@ -1,6 +1,6 @@
 import { Path } from '@effect/platform';
 import type { Scope, Types } from 'effect';
-import { Array, Data, Effect, Equal, flow, Hash, Inspectable, Option, pipe, Struct } from 'effect';
+import { Array, Data, Effect, Equal, flow, Hash, Inspectable, Logger, Option, pipe, Struct } from 'effect';
 import ts from 'typescript';
 
 import * as Effectify from './Effectify.js';
@@ -122,16 +122,16 @@ const openClientFile: (
   Effect.tap(Effect.logDebug),
   Effect.bind('projectService', () => ProjectService.ProjectService),
   Effect.bind('result', ({ fileContent, filePath, hasMixedContent, projectService, scriptKind, workspacePath }) =>
-    Effect.succeed(
-      projectService
-        .projectService()
-        .openClientFileWithNormalizedPath(
+    projectService.run((projectService) =>
+      Effect.sync(() =>
+        projectService.openClientFileWithNormalizedPath(
           filePath,
           Option.getOrUndefined(fileContent),
           Option.getOrUndefined(scriptKind),
           hasMixedContent,
           Option.getOrUndefined(workspacePath),
         ),
+      ),
     ),
   ),
   Effect.bind('tsconfigPath', OpenConfiguredProjectResult.getTsconfigPath),
@@ -177,11 +177,16 @@ export const open: (
         pipe(
           Effect.log('Closing client file', clientFile.filePath),
           Effect.flatMap(() => ProjectService.ProjectService),
-          Effect.tap((projectService) => {
-            projectService.projectService().closeClientFile(clientFile.filePath);
-          }),
+          Effect.tap((projectService) =>
+            projectService.run((projectService) =>
+              Effect.sync(() => {
+                projectService.closeClientFile(clientFile.filePath);
+              }),
+            ),
+          ),
+          Effect.tap(() => Effect.log('Client file closed')),
         ),
-    ),
+    ).pipe(Effect.withLogSpan('asdf'),v=>v, Effect.provide(Logger.pretty)),
   options: ({ filePath, workspacePath }) =>
     Effect.map(Path.Path, (path) => ({
       name: `projectService-openClientFile-${path.relative(workspacePath ?? process.cwd(), filePath)}`,

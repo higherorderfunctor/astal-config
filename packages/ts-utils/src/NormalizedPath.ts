@@ -15,7 +15,7 @@ export interface NormalizedPathBrand {
 
 export interface TsNormalizedPathBrand {
   __normalizedPathTag: '__normalizedPathTag';
-};
+}
 
 export const normalize: (s: string) => Effect.Effect<NormalizedPath, Error> = (s: string) =>
   Effect.try({

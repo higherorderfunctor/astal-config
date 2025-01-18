@@ -75,6 +75,7 @@
     // s/\v([^  ]+) ([^ ]+).*/"\2\/\1": "error",/
 
     // disabled restrictions
+    "eslint/no-empty-function": "off", // sometimes need a noop
     "eslint/no-undefined": "off",
     "import/no-default-export": "off",
     "oxc/no-async-await": "off",
@@ -99,7 +100,6 @@
     "eslint/no-console": "error",
     "eslint/no-div-regex": "error",
     "eslint/no-empty": "error",
-    "eslint/no-empty-function": "error",
     "eslint/no-eq-null": "error",
     "eslint/no-eval": "error",
     "eslint/no-iterator": "error",

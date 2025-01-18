@@ -1,12 +1,12 @@
-import type { Cause, Fiber, Layer, Scope } from 'effect';
-import { Chunk, Effect, flow, Function, Inspectable, Match, Option, pipe, Runtime, Sink, Stream, SynchronizedRef } from 'effect';
+/* eslint-disable astal/max-lines-per-function */
+import type { Cause, Layer } from 'effect';
+import type { Scope } from 'effect';
+import { Chunk, Effect, flow, Function, Inspectable, Match, Option, pipe, Stream, SynchronizedRef } from 'effect';
 import type { Emit } from 'effect/StreamEmit';
 import ts from 'typescript';
 
 import * as ServerHost from './ServerHost.js';
 
-/** FIXME: code split and cached scoped resources
- * Use aquireRelease to delete from cache
 /**
  * Noop helper.
  */
@@ -30,107 +30,110 @@ const log: {
     ),
 );
 
+const andForget = <A>(_promise: Promise<A>): void => {};
+
 /**
  * Create a ts.server.Logger` that logs to a specific Effect runtime.
  */
-// const makeLogger: (runSync: <A, E>(effect: Effect.Effect<A, E>) => A) => ts.server.Logger = (runSync) => ({
-//   close: doNothing,
-//   endGroup: doNothing,
-//   getLogFileName: (): undefined => undefined,
-//   hasLevel: (): boolean => true,
-//   info: log(runSync)(ts.server.Msg.Info),
-//   loggingEnabled: (): boolean => true,
-//   msg: log(runSync),
-//   perftrc: log(runSync)(ts.server.Msg.Perf),
-//   startGroup: doNothing,
-// });
-
-const andForget = <A>(_promise: Promise<A>): void => {};
-
-// export interface Emit<in R, in E, in A, out B> extends EmitOps<R, E, A, B> {
-//   (f: Effect.Effect<Chunk.Chunk<A>, Option.Option<E>, R>): Promise<B>
-// }
-const makeLogger2 = <R>(
-  f: (logger: ts.server.Logger) => Effect.Effect<void, never, R> | void,
-): Effect.Effect<Fiber.RuntimeFiber<void>, never, R | Scope.Scope> =>
+const makeLogger = <R>(f: (logger: ts.server.Logger) => Effect.Effect<void, never, R>): Stream.Stream<void, never, R> =>
   pipe(
-    Stream.async((emit: Emit<never, never, void, void>) =>
+    Stream.asyncEffect((emit: Emit<never, never, void, void>) =>
       f({
-        close: doNothing,
+        close: doNothing, // TODO:
         endGroup: doNothing,
         getLogFileName: (): undefined => undefined,
         hasLevel: (): boolean => true,
         info: flow(log(ts.server.Msg.Info), emit, andForget),
         loggingEnabled: (): boolean => true,
         msg: flow(log, emit, andForget),
-        perftrc: flow(log(ts.server.Msg.Perf), emit, andForget),
+        perftrc: flow(
+          log(ts.server.Msg.Perf),
+          (v) => v,
+          emit,
+          (v) => v,
+          andForget,
+          (v) => v,
+        ),
         startGroup: doNothing,
       }),
     ),
-    Stream.runScoped(Sink.drain),
-    Effect.forkScoped,
   );
 
 // TODO: log
 export class ProjectService extends Effect.Service<ProjectService>()('ProjectService', {
   accessors: true,
   dependencies: [ServerHost.layer],
-  scoped: Effect.scoped(Effect.gen(function* () {
+  effect: Effect.gen(function* () {
     const host: ts.server.ServerHost = yield* ServerHost.ServerHost;
-    const projectService = yield* pipe(
-      SynchronizedRef.make(Option.none<ts.server.ProjectService>()),
-      Effect.flatMap((ref) =>
-        //Effect.suspend(() =>
-          makeLogger2((logger) => {
-          return SynchronizedRef.update(ref, () =>
-            Option.some(
-              new ts.server.ProjectService({
-                cancellationToken: { isCancellationRequested: (): boolean => false },
-                eventHandler: (e): void => {
-                  logger.info(Inspectable.stringifyCircular(e));
-                },
-                host,
-                jsDocParsingMode: ts.JSDocParsingMode.ParseNone,
-                logger,
-                session: undefined,
-                useInferredProjectPerProjectRoot: false,
-                useSingleInferredProject: false,
-              }),
-            )).pipe(Effect.map(() => ));
-          }).pipe(v=>v),
+    const projectService = yield* Effect.Do.pipe(
+      Effect.bind('ref', () => SynchronizedRef.make(Option.none<ts.server.ProjectService>())),
+      Effect.bind('latch', () => Effect.makeLatch()),
+      Effect.bind('stream', ({ latch, ref }) =>
+        Effect.sync(() =>
+          makeLogger((logger) =>
+            pipe(
+              SynchronizedRef.update(ref, () =>
+                Option.some(
+                  new ts.server.ProjectService({
+                    // host: ServerHost;
+                    // logger: Logger;
+                    // cancellationToken: HostCancellationToken;
+                    // useSingleInferredProject: boolean;
+                    // useInferredProjectPerProjectRoot: boolean;
+                    // typingsInstaller?: ITypingsInstaller;
+                    // eventHandler?: ProjectServiceEventHandler;
+                    // canUseWatchEvents?: boolean;
+                    // suppressDiagnosticEvents?: boolean;
+                    // throttleWaitMilliseconds?: number;
+                    // globalPlugins?: readonly string[];
+                    // pluginProbeLocations?: readonly string[];
+                    // allowLocalPluginLoads?: boolean;
+                    // typesMapLocation?: string;
+                    // serverMode?: LanguageServiceMode;
+                    // session: Session<unknown> | undefined;
+                    // jsDocParsingMode?: JSDocParsingMode;
+                    cancellationToken: { isCancellationRequested: (): boolean => false },
+                    eventHandler: (e): void => {
+                      logger.info(Inspectable.stringifyCircular(e));
+                    },
+                    host,
+                    jsDocParsingMode: ts.JSDocParsingMode.ParseNone,
+                    logger,
+                    session: undefined,
+                    useInferredProjectPerProjectRoot: false,
+                    useSingleInferredProject: false,
+                  }),
+                ),
+              ),
+              Effect.andThen(() => latch.open),
+            ),
+          ),
         ),
-      //),
-      v=>v,
-      Effect.flatMap((ref) => Effect.suspend(() => pipe(
-        SynchronizedRef.get(ref),
-        v=>v,
-        Effect.flatMap(Effect.flatMap(SynchronizedRef.make)),
-        v=>v,
-      ))),
-      v=>v,
-      //Effect.flatMap(flow(Effect.flatMap((a) => SynchronizedRef.make(a)))),
-      v=>v
+      ),
+      Effect.flatMap(({ latch, ref, stream }) =>
+        Effect.gen(function* () {
+          yield* pipe(
+            Stream.fromEffect(Effect.logInfo('Stream started')),
+            Stream.concat(stream),
+            Stream.ensuring(Effect.log('Stream ended')),
+            Stream.runDrain,
+            Effect.forkScoped,
+          );
+
+          const fiber2 = yield* pipe(
+            Effect.suspend(() => latch.whenOpen(Effect.void)),
+            //Effect.forkScoped,
+          );
+          //yield* fiber2.await;
+          return ref;
+        }),
+      ),
+      Effect.flatMap((ref) => pipe(SynchronizedRef.get(ref), Effect.flatMap(Effect.flatMap(SynchronizedRef.make)))),
     );
-    // host: ServerHost;
-    // logger: Logger;
-    // cancellationToken: HostCancellationToken;
-    // useSingleInferredProject: boolean;
-    // useInferredProjectPerProjectRoot: boolean;
-    // typingsInstaller?: ITypingsInstaller;
-    // eventHandler?: ProjectServiceEventHandler;
-    // canUseWatchEvents?: boolean;
-    // suppressDiagnosticEvents?: boolean;
-    // throttleWaitMilliseconds?: number;
-    // globalPlugins?: readonly string[];
-    // pluginProbeLocations?: readonly string[];
-    // allowLocalPluginLoads?: boolean;
-    // typesMapLocation?: string;
-    // serverMode?: LanguageServiceMode;
-    // session: Session<unknown> | undefined;
-    // jsDocParsingMode?: JSDocParsingMode;
 
     return {
-      projectService: () => projectService,
+      run: <A, E, R>(f: (projectService: ts.server.ProjectService) => Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+        Effect.suspend(() => SynchronizedRef.get(projectService).pipe(Effect.flatMap(f), (v) => v)),
       // getAmbientModules: (file: string, directory?: string) => getAmbientModules(projectService, { directory, file }),
       // getProgram: (file: string, directory?: string) => getProgram(projectService, { directory, file }),
       // getProject: (file: string, directory?: string) => getProject(projectService, { directory, file }),
@@ -138,12 +141,11 @@ export class ProjectService extends Effect.Service<ProjectService>()('ProjectSer
       // getTypeChecker: (file: string, directory?: string) => getTypeChecker(projectService, { directory, file }),
       // openClientFile: (file: string, directory?: string) => openClientFile(projectService, { directory, file }),
     };
-  }).pipe(v=>v)),
+  }).pipe((v) => v),
 }) {}
 
 // FIXME: error type
-export const layer: Layer.Layer<ProjectService, Cause.NoSuchElementException, never> = ProjectService.Default;
-
+export const layer: Layer.Layer<ProjectService, Cause.NoSuchElementException, Scope.Scope> = ProjectService.Default;
 
 // (runSync: <A, E>(effect: Effect.Effect<A, E>) => A) => ts.server.Logger = (runSync) => ({
 //   close: doNothing,

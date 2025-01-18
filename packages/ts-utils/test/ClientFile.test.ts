@@ -1,20 +1,18 @@
 import { describe, expect, it } from 'bun:test';
 
+import { NodeSdk } from '@effect/opentelemetry';
 import { BunContext } from '@effect/platform-bun';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { Cause, Effect, flow, Inspectable, Logger, Option } from 'effect';
 
-import { NodeSdk } from "@effect/opentelemetry"
 import { ClientFile, ProjectService } from '@astal-config/ts-utils';
-import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base"
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http"
 
 const NodeSdkLive = NodeSdk.layer(() => ({
+  resource: { serviceName: 'example' },
 
-  resource: { serviceName: "example" },
-
-  spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter())
-
-}))
+  spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter()),
+}));
 
 describe('FileWatcher', () => {
   it('should watch files', () =>
@@ -29,7 +27,7 @@ describe('FileWatcher', () => {
           workspacePath: Option.some(`${__dirname}/fixtures`),
         });
       }).pipe(
-          Effect.provide(NodeSdkLive),
+        Effect.provide(NodeSdkLive),
         Effect.scoped,
         Effect.provide(ProjectService.layer),
         Effect.provide(BunContext.layer),

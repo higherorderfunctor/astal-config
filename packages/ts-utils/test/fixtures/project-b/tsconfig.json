@@ -1,0 +1,7 @@
+{
+  "noLib": true,
+  "compilerOptions": {
+    "strict": true,
+    "types": []
+  }
+}
