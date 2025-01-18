@@ -1,58 +1,11 @@
 /* eslint-disable astal/max-lines-per-function */
-import { Cause, Layer, Tracer } from 'effect';
+import type { Cause, Layer } from 'effect';
 import type { Scope } from 'effect';
-import { Chunk, DateTime, Effect, Fiber, FiberRef, flow, Function, HashMap, HashSet, Inspectable, LogLevel, Match, Option, pipe, Record, Stream, SynchronizedRef } from 'effect';
+import { Chunk, Effect, flow, Function, Inspectable, Match, Option, pipe, Stream, SynchronizedRef } from 'effect';
 import type { Emit } from 'effect/StreamEmit';
 import ts from 'typescript';
 
 import * as ServerHost from './ServerHost.js';
-/**
- * Extract span annotations.
- *
- * @param span - The span to extract annotations from.
- */
-const getSpanAnnotations: (span: Tracer.AnySpan) => HashMap.HashMap<string, unknown> =
-  // match between regular or external spans
-  Match.type<Tracer.AnySpan>().pipe(
-    // external spans have no annotations
-    Match.tag('ExternalSpan', () => HashMap.empty<string, unknown>()),
-    // extract regular span annotations
-    Match.tag('Span', (span) =>
-      // recursively merge annotations from parent
-      span.parent
-        // extract parent annotations if any
-        .pipe(Option.map(getSpanAnnotations), Option.getOrElse(HashMap.empty))
-        // merge with current annotations (child takes precedence for key conflicts)
-        .pipe(HashMap.union(HashMap.fromIterable(span.attributes))),
-    ),
-    // guard in case effect adds new span types
-    Match.exhaustive,
-  );
-
-/**
- * Format a span for logging.
- *
- * @param span - The span to format.
- */
-export const getSpanInfo: (span: Tracer.AnySpan) => Record<string, unknown> =
-  // match between regular or external spans
-  Match.type<Tracer.AnySpan>().pipe(
-    Match.tag('ExternalSpan', ({ spanId, traceId }) => ({
-      // add basic info from an external span
-      'tracer.span.external': true,
-      'tracer.span.id': spanId,
-      'tracer.span.traceId': traceId,
-    })),
-    // add compelling info from a regular span
-    Match.tag('Span', (span) =>  ({
-      'tracer.span.id': span.spanId,
-      'tracer.span.traceId': span.traceId,
-      ...getSpanAnnotations(span).pipe(HashMap.toEntries, Record.fromEntries),
-  })
-    ),
-    // guard in case effect adds new span types
-    Match.exhaustive,
-  );
 
 // TODO: latch logs
 // turn off pretty or make better default logger
@@ -62,70 +15,21 @@ export const getSpanInfo: (span: Tracer.AnySpan) => Record<string, unknown> =
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const doNothing = (): void => {};
 
-      const log2 = <L extends LogLevel.LogLevel>(message: any[], logLevel: L) => {
-        // capture the current fiber to extract contextual information
-        const fiber = Option.getOrThrow(Fiber.getCurrentFiber());
-
-        // capture the current minimum log level
-        const minimumLogLevel = fiber.getFiberRef(FiberRef.currentMinimumLogLevel);
-        const span = fiber.currentSpan;
-
-        // manually filter out logs that are below the minimum log level since calling the logger directly and bypassing
-        // effect's internals
-        if (LogLevel.lessThan(logLevel, minimumLogLevel)) {
-          return;
-        }
-
-        // capture the date for the next log message (`TestClock` compatible for testing)
-        const date = DateTime.unsafeNow().pipe(DateTime.toDate);
-        // capture the current loggers
-        const loggers = fiber.getFiberRef(FiberRef.currentLoggers);
-        // capture the current log spans
-        const spans = fiber.getFiberRef(FiberRef.currentLogSpan);
-        // capture the current log annotations
-        const annotations = fiber.getFiberRef(FiberRef.currentLogAnnotations);
-        // capture the current span annotations
-        const spanAnnotations = span ? HashMap.fromIterable(Record.toEntries(getSpanInfo(span) as Record<string, unknown>)) : HashMap.empty<string, unknown>();
-        // capture the current fiberRefs
-        const refs = fiber.getFiberRefs();
-
-        // log the same message to all the current loggers
-        HashSet.forEach(loggers, (logger) => {
-          logger.log({
-            // NOTE: log annotations take precedence over span annotations for consistency with the `JsonlLogger`
-            annotations: HashMap.union(spanAnnotations, annotations),
-            // include an empty cause if none is provided
-            cause: Cause.empty,
-            context: refs,
-            date,
-            fiberId: fiber.id(),
-            // INFO if there is no cause, else ERROR
-            logLevel,
-            message,
-            spans,
-          });
-        });
-      };
 /**
  * Log a `ts.server.Msg`'s in a specific Effect runtime.
  */
 const log: {
-  (type: ts.server.Msg): (s: string) => void;
-  (s: string, type: ts.server.Msg): void;
+  (type: ts.server.Msg): (s: string) => Effect.Effect<Chunk.Chunk<never>, Option.Option<never>>;
+  (s: string, type: ts.server.Msg): Effect.Effect<Chunk.Chunk<never>, Option.Option<never>>;
 } = Function.dual(
   2,
-  (s: string, type: ts.server.Msg): void => {
-    return pipe(
-      //Effect.andThen(fiber.inheritAll,
-      Match.value(type).pipe(
-      Match.when(ts.server.Msg.Err, (type) => log2([s], LogLevel.Error)),
-      Match.when(ts.server.Msg.Perf, (type) => log2([s], LogLevel.Trace)),
-      Match.orElse((type) => log2([s], LogLevel.Info)),
-      //Effect.map(() => Chunk.empty()),
+  (s: string, type: ts.server.Msg): Effect.Effect<Chunk.Chunk<never>, Option.Option<never>> =>
+    Match.value(type).pipe(
+      Match.when(ts.server.Msg.Err, (type) => Effect.logError(s, { type })),
+      Match.when(ts.server.Msg.Perf, (type) => Effect.logDebug(s, { type })),
+      Match.orElse((type) => Effect.logInfo(s, { type })),
+      Effect.map(() => Chunk.empty()),
     ),
-      v=>v,
-    );
-  }
 );
 
 const andForget = <A>(_promise: Promise<A>): void => {};
@@ -133,24 +37,26 @@ const andForget = <A>(_promise: Promise<A>): void => {};
 /**
  * Create a ts.server.Logger` that logs to a specific Effect runtime.
  */
-const makeLogger = ()  =>
-  //pipe(
-  //  Stream.async((emit: Emit<never, never, void, void>) =>
-      ({
+const makeLogger = <R>(f: (logger: ts.server.Logger) => Effect.Effect<void, never, R>): Stream.Stream<void, never, R> =>
+  pipe(
+    Stream.asyncEffect((emit: Emit<never, never, void, void>) =>
+      f({
         close: doNothing, // TODO:
         endGroup: doNothing,
         getLogFileName: (): undefined => undefined,
         hasLevel: (): boolean => true,
-        info: flow(log(ts.server.Msg.Info)),
+        info: flow(log(ts.server.Msg.Info), emit, andForget),
         loggingEnabled: (): boolean => true,
-        msg: flow(log),
+        msg: flow(log, emit, andForget),
         perftrc: flow(
           log(ts.server.Msg.Perf),
+          emit,
+          andForget,
         ),
         startGroup: doNothing,
-      });
-  //  ),
-  //);
+      }),
+    ),
+  );
 
 // TODO: log
 export class ProjectService extends Effect.Service<ProjectService>()('ProjectService', {
@@ -158,44 +64,74 @@ export class ProjectService extends Effect.Service<ProjectService>()('ProjectSer
   dependencies: [ServerHost.layer],
   effect: Effect.gen(function* () {
     const host: ts.server.ServerHost = yield* ServerHost.ServerHost;
-    const latch = yield* Effect.makeLatch(true)
-    const logger = makeLogger();
-    const projectService = new ts.server.ProjectService({
-                    // host: ServerHost;
-                    // logger: Logger;
-                    // cancellationToken: HostCancellationToken;
-                    // useSingleInferredProject: boolean;
-                    // useInferredProjectPerProjectRoot: boolean;
-                    // typingsInstaller?: ITypingsInstaller;
-                    // eventHandler?: ProjectServiceEventHandler;
-                    // canUseWatchEvents?: boolean;
-                    // suppressDiagnosticEvents?: boolean;
-                    // throttleWaitMilliseconds?: number;
-                    // globalPlugins?: readonly string[];
-                    // pluginProbeLocations?: readonly string[];
+    const latch = yield* Effect.makeLatch()
+    const projectService = yield* Effect.Do.pipe(
+      Effect.bind('ref', () => SynchronizedRef.make(Option.none<ts.server.ProjectService>())),
+      Effect.bind('stream', ({ ref }) =>
+        Effect.sync(() =>
+          makeLogger((logger) =>
+            pipe(
+              SynchronizedRef.set(ref,
+                Option.some(
+                  new ts.server.ProjectService({
                     // allowLocalPluginLoads?: boolean;
-                    // typesMapLocation?: string;
+                    // canUseWatchEvents?: boolean;
+                    // cancellationToken: HostCancellationToken;
+                    cancellationToken: { isCancellationRequested: (): boolean => false },
+                    // eventHandler?: ProjectServiceEventHandler;
+                    eventHandler: (e): void => {
+                      logger.info(Inspectable.stringifyCircular({ Event: e }, 2));
+                    },
+                    // globalPlugins?: readonly string[];
+                    // host: ServerHost;
+                    host,
+                    // jsDocParsingMode?: JSDocParsingMode;
+                    jsDocParsingMode: ts.JSDocParsingMode.ParseNone,
+                    // logger: Logger;
+                    logger,
+                    // pluginProbeLocations?: readonly string[];
                     // serverMode?: LanguageServiceMode;
                     // session: Session<unknown> | undefined;
-                    // jsDocParsingMode?: JSDocParsingMode;
-                    cancellationToken: { isCancellationRequested: (): boolean => false },
-                    eventHandler: (e): void => {
-                      logger.info(Inspectable.stringifyCircular(e));
-                    },
-                    host,
-                    jsDocParsingMode: ts.JSDocParsingMode.ParseNone,
-                    logger,
                     session: undefined,
+                    // suppressDiagnosticEvents?: boolean;
+                    // throttleWaitMilliseconds?: number;
+                    // typesMapLocation?: string;
+                    // typingsInstaller?: ITypingsInstaller;
+                    // useInferredProjectPerProjectRoot: boolean;
                     useInferredProjectPerProjectRoot: false,
+                    // useSingleInferredProject: boolean;
                     useSingleInferredProject: false,
-                  });
+                  }),
+                ),
+              ),
+              Effect.andThen(() => latch.open),
+            ),
+          ),
+        ),
+      ),
+      Effect.flatMap(({ ref, stream }) =>
+        Effect.gen(function* () {
+          yield* pipe(
+            Stream.fromEffect(Effect.logInfo('Stream started')),
+            Stream.concat(stream),
+            Stream.ensuring(Effect.log('Stream ended')),
+            Stream.runDrain,
+            Effect.forkScoped,
+          );
+
+          yield* latch.whenOpen(Effect.void);
+          return ref;
+        }),
+      ),
+      Effect.flatMap((ref) => pipe(SynchronizedRef.get(ref), Effect.flatMap(Effect.flatMap(SynchronizedRef.make)))),
+    );
 
     return {
       run: <A, E, R>(f: (projectService: ts.server.ProjectService) => Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
         Effect.suspend(() => pipe(
           latch.close,
-          Effect.flatMap(() => f(projectService)),
-          Effect.tap(() => latch.open), latch.whenOpen )),
+          Effect.flatMap(() => SynchronizedRef.get(projectService)),
+          Effect.flatMap(f), Effect.tap(() => latch.open), latch.whenOpen )),
       // getAmbientModules: (file: string, directory?: string) => getAmbientModules(projectService, { directory, file }),
       // getProgram: (file: string, directory?: string) => getProgram(projectService, { directory, file }),
       // getProject: (file: string, directory?: string) => getProject(projectService, { directory, file }),
@@ -203,7 +139,7 @@ export class ProjectService extends Effect.Service<ProjectService>()('ProjectSer
       // getTypeChecker: (file: string, directory?: string) => getTypeChecker(projectService, { directory, file }),
       // openClientFile: (file: string, directory?: string) => openClientFile(projectService, { directory, file }),
     };
-  }).pipe((v) => v),
+  }),
 }) {}
 
 // FIXME: error type

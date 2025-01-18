@@ -186,7 +186,7 @@ export const open: (
           ),
           Effect.tap(() => Effect.log('Client file closed')),
         ),
-    ).pipe(Effect.withLogSpan('asdf'),v=>v, Effect.provide(Logger.pretty)),
+    ).pipe(Effect.withLogSpan('asdf')),
   options: ({ filePath, workspacePath }) =>
     Effect.map(Path.Path, (path) => ({
       name: `projectService-openClientFile-${path.relative(workspacePath ?? process.cwd(), filePath)}`,

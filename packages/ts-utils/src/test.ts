@@ -33,8 +33,8 @@ Effect.gen(function* () {
   Effect.provide(NodeSdkLive),
   Effect.provide(BunContext.layer),
   Effect.sandbox,
-  Effect.tapError(flow(Inspectable.toJSON, Effect.logWarning)),
+  Effect.tapError(flow(Inspectable.toJSON, Effect.logFatal)),
   Effect.provide(Logger.structured),
     Effect.provide(Logger.minimumLogLevel(LogLevel.All)),
-  BunRuntime.runMain,
+  BunRuntime.runMain({ disableErrorReporting: true, disablePrettyLogger: true }),
 );
