@@ -2,7 +2,7 @@ import { NodeSdk } from '@effect/opentelemetry';
 import { BunContext, BunRuntime } from '@effect/platform-bun';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { Cause, Duration, Effect, Exit, flow, Inspectable, Logger, LogLevel, Option, Schedule, Scope } from 'effect';
+import { Cause, Duration, Effect, Exit, Fiber, flow, Inspectable, Logger, LogLevel, Option, pipe, Schedule, Scope } from 'effect';
 import { ScheduleDriverTypeId } from 'effect/Schedule';
 
 import { ClientFile, ProjectService } from '@astal-config/ts-utils';
@@ -16,14 +16,22 @@ const NodeSdkLive = NodeSdk.layer(() => ({
 Effect.gen(function* () {
   const scope = yield* Scope.make();
   yield* Effect.gen(function* () {
-    yield* ClientFile.open({
+    const fiberA = yield* Effect.fork(ClientFile.open({
       filePath: `${__dirname}/fixtures/project-a/index.ts`,
       workspacePath: `${__dirname}/fixtures`,
-    }).pipe(Effect.provideService(Scope.Scope, scope));
-    yield* ClientFile.open({
+    }).pipe(Effect.provideService(Scope.Scope, scope)));
+    yield* pipe(
+      Effect.log('interrupting'),
+      Effect.flatMap(() => Fiber.interrupt(fiberA)),
+      Effect.flatMap(Effect.log),
+      Effect.delay('500 millis'),
+      Effect.fork,
+      Effect.flatMap(Fiber.join)
+    );
+    const fiberB = yield* Effect.fork(ClientFile.open({
       filePath: `${__dirname}/fixtures/project-b/index.ts`,
       workspacePath: `${__dirname}/fixtures`,
-    }).pipe(Effect.provideService(Scope.Scope, scope));
+    }).pipe(Effect.provideService(Scope.Scope, scope)));
   }).pipe(Effect.provide(ProjectService.layer));
   yield* Effect.log('closing it now');
   yield* Scope.close(scope, Exit.succeed('asdf'));

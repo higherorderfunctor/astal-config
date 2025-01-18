@@ -1,7 +1,21 @@
+/* eslint-disable max-classes-per-file */
 /* eslint-disable astal/max-lines-per-function */
-import type { Cause, Layer } from 'effect';
+import type { Cause, HashSet, Layer } from 'effect';
 import type { Scope } from 'effect';
-import { Chunk, Effect, flow, Function, Inspectable, Match, Option, pipe, Stream, SynchronizedRef } from 'effect';
+import {
+  Chunk,
+  Effect,
+  Fiber,
+  flow,
+  Function,
+  Inspectable,
+  Match,
+  Option,
+  pipe,
+  FiberId,
+  Stream,
+  SynchronizedRef,
+} from 'effect';
 import type { Emit } from 'effect/StreamEmit';
 import ts from 'typescript';
 
@@ -48,15 +62,36 @@ const makeLogger = <R>(f: (logger: ts.server.Logger) => Effect.Effect<void, neve
         info: flow(log(ts.server.Msg.Info), emit, andForget),
         loggingEnabled: (): boolean => true,
         msg: flow(log, emit, andForget),
-        perftrc: flow(
-          log(ts.server.Msg.Perf),
-          emit,
-          andForget,
-        ),
+        perftrc: flow(log(ts.server.Msg.Perf), emit, andForget),
         startGroup: doNothing,
       }),
     ),
   );
+
+export class CancellationToken {
+  private cancelled = SynchronizedRef.unsafeMake(false);
+
+  interrupt(interruptors: HashSet.HashSet<FiberId.FiberId>): Effect.Effect<void> {
+    return pipe(
+      SynchronizedRef.set(this.cancelled, true),
+      Effect.tap(() => Effect.logInfo('CancellationToken ::interrupt', { interruptors })),
+    );
+  }
+
+  isCancellationRequested() {
+    return Effect.runSync(pipe(
+      SynchronizedRef.get(this.cancelled),
+      Effect.tap(() => Effect.logInfo('CancellationToken ::isCancellationRequested')),
+    ));
+  }
+
+  reset() {
+    return pipe(
+      SynchronizedRef.set(this.cancelled, false),
+      Effect.tap(() => Effect.logInfo('CancellationToken ::reset')),
+    );
+  }
+}
 
 // TODO: log
 export class ProjectService extends Effect.Service<ProjectService>()('ProjectService', {
@@ -64,20 +99,22 @@ export class ProjectService extends Effect.Service<ProjectService>()('ProjectSer
   dependencies: [ServerHost.layer],
   effect: Effect.gen(function* () {
     const host: ts.server.ServerHost = yield* ServerHost.ServerHost;
-    const latch = yield* Effect.makeLatch()
+    const latch = yield* Effect.makeLatch();
+    const cancellationToken = new CancellationToken();
     const projectService = yield* Effect.Do.pipe(
       Effect.bind('ref', () => SynchronizedRef.make(Option.none<ts.server.ProjectService>())),
       Effect.bind('stream', ({ ref }) =>
         Effect.sync(() =>
           makeLogger((logger) =>
             pipe(
-              SynchronizedRef.set(ref,
+              SynchronizedRef.set(
+                ref,
                 Option.some(
                   new ts.server.ProjectService({
                     // allowLocalPluginLoads?: boolean;
                     // canUseWatchEvents?: boolean;
                     // cancellationToken: HostCancellationToken;
-                    cancellationToken: { isCancellationRequested: (): boolean => false },
+                    cancellationToken,
                     // eventHandler?: ProjectServiceEventHandler;
                     eventHandler: (e): void => {
                       logger.info(Inspectable.stringifyCircular({ Event: e }, 2));
@@ -128,10 +165,23 @@ export class ProjectService extends Effect.Service<ProjectService>()('ProjectSer
 
     return {
       run: <A, E, R>(f: (projectService: ts.server.ProjectService) => Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-        Effect.suspend(() => pipe(
-          latch.close,
-          Effect.flatMap(() => SynchronizedRef.get(projectService)),
-          Effect.flatMap(f), Effect.tap(() => latch.open), latch.whenOpen )),
+        Effect.suspend(() =>
+          Effect.interruptibleMask<A, E, R>((restore) =>
+            restore(pipe(
+              Effect.logTrace('ProjectService :: latch :: whenOpen'),
+              Effect.tap(() => latch.close),
+              Effect.tap(() => Effect.logTrace('ProjectService :: latch :: closed')),
+              Effect.flatMap(() => SynchronizedRef.get(projectService)),
+              Effect.flatMap(f),
+              Effect.fork,
+              Effect.flatMap(Fiber.join),
+              Effect.onInterrupt(cancellationToken.interrupt),
+              Effect.tap(() => latch.open),
+              Effect.tap(() => Effect.logTrace('ProjectService :: latch :: opened')),
+              latch.whenOpen,
+            )
+          ),
+        )),
       // getAmbientModules: (file: string, directory?: string) => getAmbientModules(projectService, { directory, file }),
       // getProgram: (file: string, directory?: string) => getProgram(projectService, { directory, file }),
       // getProject: (file: string, directory?: string) => getProject(projectService, { directory, file }),
@@ -144,7 +194,6 @@ export class ProjectService extends Effect.Service<ProjectService>()('ProjectSer
 
 // FIXME: error type
 export const layer: Layer.Layer<ProjectService, Cause.NoSuchElementException, Scope.Scope> = ProjectService.Default;
-
 
 /**
  * Get the root most `tsconfig.json` for the first configured project.
