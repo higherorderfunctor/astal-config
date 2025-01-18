@@ -7,6 +7,8 @@ import ts from 'typescript';
 
 import * as ServerHost from './ServerHost.js';
 
+// TODO: latch logs
+// turn off pretty or make better default logger
 /**
  * Noop helper.
  */
@@ -48,11 +50,8 @@ const makeLogger = <R>(f: (logger: ts.server.Logger) => Effect.Effect<void, neve
         msg: flow(log, emit, andForget),
         perftrc: flow(
           log(ts.server.Msg.Perf),
-          (v) => v,
           emit,
-          (v) => v,
           andForget,
-          (v) => v,
         ),
         startGroup: doNothing,
       }),
@@ -65,14 +64,14 @@ export class ProjectService extends Effect.Service<ProjectService>()('ProjectSer
   dependencies: [ServerHost.layer],
   effect: Effect.gen(function* () {
     const host: ts.server.ServerHost = yield* ServerHost.ServerHost;
+    const latch = yield* Effect.makeLatch()
     const projectService = yield* Effect.Do.pipe(
       Effect.bind('ref', () => SynchronizedRef.make(Option.none<ts.server.ProjectService>())),
-      Effect.bind('latch', () => Effect.makeLatch()),
-      Effect.bind('stream', ({ latch, ref }) =>
+      Effect.bind('stream', ({ ref }) =>
         Effect.sync(() =>
           makeLogger((logger) =>
             pipe(
-              SynchronizedRef.update(ref, () =>
+              SynchronizedRef.set(ref,
                 Option.some(
                   new ts.server.ProjectService({
                     // host: ServerHost;
@@ -110,7 +109,7 @@ export class ProjectService extends Effect.Service<ProjectService>()('ProjectSer
           ),
         ),
       ),
-      Effect.flatMap(({ latch, ref, stream }) =>
+      Effect.flatMap(({ ref, stream }) =>
         Effect.gen(function* () {
           yield* pipe(
             Stream.fromEffect(Effect.logInfo('Stream started')),
@@ -120,11 +119,7 @@ export class ProjectService extends Effect.Service<ProjectService>()('ProjectSer
             Effect.forkScoped,
           );
 
-          const fiber2 = yield* pipe(
-            Effect.suspend(() => latch.whenOpen(Effect.void)),
-            //Effect.forkScoped,
-          );
-          //yield* fiber2.await;
+          yield* latch.whenOpen(Effect.void);
           return ref;
         }),
       ),
@@ -133,7 +128,10 @@ export class ProjectService extends Effect.Service<ProjectService>()('ProjectSer
 
     return {
       run: <A, E, R>(f: (projectService: ts.server.ProjectService) => Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-        Effect.suspend(() => SynchronizedRef.get(projectService).pipe(Effect.flatMap(f), (v) => v)),
+        Effect.suspend(() => pipe(
+          latch.close,
+          Effect.flatMap(() => SynchronizedRef.get(projectService)),
+          Effect.flatMap(f), Effect.tap(() => latch.open), latch.whenOpen )),
       // getAmbientModules: (file: string, directory?: string) => getAmbientModules(projectService, { directory, file }),
       // getProgram: (file: string, directory?: string) => getProgram(projectService, { directory, file }),
       // getProject: (file: string, directory?: string) => getProject(projectService, { directory, file }),
@@ -147,17 +145,6 @@ export class ProjectService extends Effect.Service<ProjectService>()('ProjectSer
 // FIXME: error type
 export const layer: Layer.Layer<ProjectService, Cause.NoSuchElementException, Scope.Scope> = ProjectService.Default;
 
-// (runSync: <A, E>(effect: Effect.Effect<A, E>) => A) => ts.server.Logger = (runSync) => ({
-//   close: doNothing,
-//   endGroup: doNothing,
-//   getLogFileName: (): undefined => undefined,
-//   hasLevel: (): boolean => true,
-//   info: log(runSync)(ts.server.Msg.Info),
-//   loggingEnabled: (): boolean => true,
-//   msg: log(runSync),
-//   perftrc: log(runSync)(ts.server.Msg.Perf),
-//   startGroup: doNothing,
-// });
 
 /**
  * Get the root most `tsconfig.json` for the first configured project.
