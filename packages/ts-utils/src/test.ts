@@ -4,6 +4,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { Cause, Duration, Effect, Exit, Fiber, flow, Inspectable, Logger, LogLevel, Option, pipe, Schedule, Scope } from 'effect';
 import { ScheduleDriverTypeId } from 'effect/Schedule';
+import * as PrettyLogger from './PrettyLogger.js';
 
 import { ClientFile, ProjectService } from '@astal-config/ts-utils';
 
@@ -23,8 +24,8 @@ Effect.gen(function* () {
     yield* pipe(
       Effect.log('interrupting'),
       Effect.flatMap(() => Fiber.interrupt(fiberA)),
-      Effect.flatMap(Effect.log),
-      Effect.delay('500 millis'),
+      Effect.flatMap((exit) => Effect.log('interrupted result', exit)),
+      Effect.delay('1 seconds'),
       Effect.fork,
       Effect.flatMap(Fiber.join)
     );
@@ -42,7 +43,7 @@ Effect.gen(function* () {
   Effect.provide(BunContext.layer),
   Effect.sandbox,
   Effect.tapError(flow(Inspectable.toJSON, Effect.logFatal)),
-  Effect.provide(Logger.structured),
+  Effect.provide(PrettyLogger.pretty),
     Effect.provide(Logger.minimumLogLevel(LogLevel.All)),
   BunRuntime.runMain({ disableErrorReporting: true, disablePrettyLogger: true }),
 );

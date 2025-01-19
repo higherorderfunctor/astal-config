@@ -1,6 +1,6 @@
 /* eslint-disable max-classes-per-file */
 /* eslint-disable astal/max-lines-per-function */
-import type { Cause, HashSet, Layer } from 'effect';
+import type { Cause, FiberId, HashSet, Layer } from 'effect';
 import type { Scope } from 'effect';
 import {
   Chunk,
@@ -12,7 +12,6 @@ import {
   Match,
   Option,
   pipe,
-  FiberId,
   Stream,
   SynchronizedRef,
 } from 'effect';
@@ -69,7 +68,7 @@ const makeLogger = <R>(f: (logger: ts.server.Logger) => Effect.Effect<void, neve
   );
 
 export class CancellationToken {
-  private cancelled = SynchronizedRef.unsafeMake(false);
+  private readonly cancelled = SynchronizedRef.unsafeMake(false);
 
   interrupt(interruptors: HashSet.HashSet<FiberId.FiberId>): Effect.Effect<void> {
     return pipe(
@@ -79,10 +78,13 @@ export class CancellationToken {
   }
 
   isCancellationRequested() {
-    return Effect.runSync(pipe(
-      SynchronizedRef.get(this.cancelled),
-      Effect.tap(() => Effect.logInfo('CancellationToken ::isCancellationRequested')),
-    ));
+    console.log('isCancellationRequested');
+    return Effect.runSync(
+      pipe(
+        SynchronizedRef.get(this.cancelled),
+        Effect.tap(() => Effect.logInfo('CancellationToken ::isCancellationRequested')),
+      ),
+    );
   }
 
   reset() {
@@ -167,27 +169,34 @@ export class ProjectService extends Effect.Service<ProjectService>()('ProjectSer
       run: <A, E, R>(f: (projectService: ts.server.ProjectService) => Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
         Effect.suspend(() =>
           Effect.interruptibleMask<A, E, R>((restore) =>
-            restore(pipe(
-              Effect.logTrace('ProjectService :: latch :: whenOpen'),
-              Effect.tap(() => latch.close),
-              Effect.tap(() => Effect.logTrace('ProjectService :: latch :: closed')),
-              Effect.flatMap(() => SynchronizedRef.get(projectService)),
-              Effect.flatMap(f),
-              Effect.fork,
-              Effect.flatMap(Fiber.join),
-              Effect.onInterrupt(cancellationToken.interrupt),
-              Effect.tap(() => latch.open),
-              Effect.tap(() => Effect.logTrace('ProjectService :: latch :: opened')),
-              latch.whenOpen,
-            )
+            restore(
+              pipe(
+                Effect.logTrace('ProjectService :: latch :: whenOpen'),
+                Effect.tap(() => latch.close),
+                Effect.tap(() => Effect.logTrace('ProjectService :: latch :: closed')),
+                Effect.flatMap(() => SynchronizedRef.get(projectService)),
+                Effect.flatMap(f),
+                Effect.fork,
+                Effect.flatMap(Fiber.join),
+                Effect.onInterrupt((interruptors) =>
+                  pipe(
+                    Effect.logTrace('ProjectService :: run :: onInterrupt'),
+                    Effect.flatMap(() => cancellationToken.interrupt(interruptors)),
+                  ),
+                ),
+                Effect.tap(() => cancellationToken.reset()),
+                Effect.tap(() => latch.open),
+                Effect.tap(() => Effect.logTrace('ProjectService :: latch :: opened')),
+                latch.whenOpen,
+              ),
+            ),
           ),
-        )),
+        ),
       // getAmbientModules: (file: string, directory?: string) => getAmbientModules(projectService, { directory, file }),
       // getProgram: (file: string, directory?: string) => getProgram(projectService, { directory, file }),
       // getProject: (file: string, directory?: string) => getProject(projectService, { directory, file }),
       // getSourceFile: (file: string, directory?: string) => getSourceFile(projectService, { directory, file }),
       // getTypeChecker: (file: string, directory?: string) => getTypeChecker(projectService, { directory, file }),
-      // openClientFile: (file: string, directory?: string) => openClientFile(projectService, { directory, file }),
     };
   }),
 }) {}
