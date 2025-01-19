@@ -2,11 +2,27 @@ import { NodeSdk } from '@effect/opentelemetry';
 import { BunContext, BunRuntime } from '@effect/platform-bun';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { Cause, Duration, Effect, Exit, Fiber, flow, Inspectable, Logger, LogLevel, Option, pipe, Schedule, Scope } from 'effect';
+import {
+  Cause,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  flow,
+  Inspectable,
+  Layer,
+  Logger,
+  LogLevel,
+  Option,
+  pipe,
+  Schedule,
+  Scope,
+} from 'effect';
 import { ScheduleDriverTypeId } from 'effect/Schedule';
-import * as PrettyLogger from './PrettyLogger.js';
 
 import { ClientFile, ProjectService } from '@astal-config/ts-utils';
+
+import * as PrettyLogger from './PrettyLogger.js';
 
 const NodeSdkLive = NodeSdk.layer(() => ({
   resource: { serviceName: 'example' },
@@ -17,33 +33,39 @@ const NodeSdkLive = NodeSdk.layer(() => ({
 Effect.gen(function* () {
   const scope = yield* Scope.make();
   yield* Effect.gen(function* () {
-    const fiberA = yield* Effect.fork(ClientFile.open({
-      filePath: `${__dirname}/fixtures/project-a/index.ts`,
-      workspacePath: `${__dirname}/fixtures`,
-    }).pipe(Effect.provideService(Scope.Scope, scope)));
+    const fiberA = yield* Effect.fork(
+      ClientFile.open({
+        filePath: `${__dirname}/fixtures/project-a/index.ts`,
+        workspacePath: `${__dirname}/fixtures`,
+      }).pipe(Effect.provideService(Scope.Scope, scope)),
+    );
     yield* pipe(
       Effect.log('interrupting'),
       Effect.flatMap(() => Fiber.interrupt(fiberA)),
       Effect.flatMap((exit) => Effect.log('interrupted result', exit)),
       Effect.delay('1 seconds'),
       Effect.fork,
-      Effect.flatMap(Fiber.join)
+      Effect.flatMap(Fiber.join),
     );
-    const fiberB = yield* Effect.fork(ClientFile.open({
-      filePath: `${__dirname}/fixtures/project-b/index.ts`,
-      workspacePath: `${__dirname}/fixtures`,
-    }).pipe(Effect.provideService(Scope.Scope, scope)));
+    const fiberB = yield* Effect.fork(
+      ClientFile.open({
+        filePath: `${__dirname}/fixtures/project-b/index.ts`,
+        workspacePath: `${__dirname}/fixtures`,
+      }).pipe(Effect.provideService(Scope.Scope, scope)),
+    );
   }).pipe(Effect.provide(ProjectService.layer));
   yield* Effect.log('closing it now');
   yield* Scope.close(scope, Exit.succeed('asdf'));
   yield* Effect.log('closed!!!!!');
 }).pipe(
-    Effect.scoped,
+  Effect.scoped,
   Effect.provide(NodeSdkLive),
   Effect.provide(BunContext.layer),
   Effect.sandbox,
   Effect.tapError(flow(Inspectable.toJSON, Effect.logFatal)),
-  Effect.provide(PrettyLogger.pretty),
-    Effect.provide(Logger.minimumLogLevel(LogLevel.All)),
+  Effect.provide(pipe(PrettyLogger.jsonLinesConsole, PrettyLogger.withStartTimeMillis, Layer.unwrapEffect, v =>v)),
+  //Effect.provide(Logger.structured),
+  //Effect.provide(Logger.replace(Logger.defaultLogger, Logger.none)),
+  Effect.provide(Logger.minimumLogLevel(LogLevel.All)),
   BunRuntime.runMain({ disableErrorReporting: true, disablePrettyLogger: true }),
 );

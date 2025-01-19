@@ -1,12 +1,9 @@
-message_keys = ["message"]
 time_keys = ["timestamp"]
-dump_all_exclude = []
-always_print_fields = []
 level_keys = ["level"]
-main_line_format = "{{bold(fixed_size 19 fblog_timestamp)}} {{level_style (uppercase (fixed_size 5 fblog_level))}}:{{#if fblog_prefix}} {{bold(cyan fblog_prefix)}}{{/if}} {{fblog_message}}"
+message_keys = ["message"]
+dump_all_exclude = ["timestamp", "level", "message"]
+always_print_fields = []
+main_line_format = "{{bold(fixed_size 19 fblog_timestamp)}} \u001b[3m{{level_style (uppercase (fixed_size 5 fblog_level))}}\u001b[23m:{{#if fblog_prefix}} {{bold(cyan fblog_prefix)}}{{/if}} {{color_rgb 100 100 100 fblog_message}}"
 additional_value_format = "{{bold (color_rgb 0 150 150 (min_size 25 key))}}: {{value}}"
 
 [level_map]
-# {{bold(fixed_size 19 fblog_timestamp)}}
-# {{level_style (uppercase (fixed_size 5 fblog_level))}}
-# :{{#if fblog_prefix}} {{bold(cyan fblog_prefix)}}{{/if}} {{fblog_message}}
