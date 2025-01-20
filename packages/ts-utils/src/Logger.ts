@@ -19,11 +19,12 @@ import {
   Option,
   pipe,
   Predicate,
+  Runtime,
   Scope,
   Stream,
   SynchronizedRef,
+  Tuple,
 } from 'effect';
-import { defaultLogger } from 'effect/Logger';
 import type { ReadonlyRecord } from 'effect/Record';
 
 type LogLevelLabel<T extends LogLevel.LogLevel> = T['label'];
@@ -76,7 +77,7 @@ const levelStyle: (level: LogLevel.LogLevel) => (doc: AnsiDoc.AnsiDoc) => AnsiDo
 // format the span info (if any)
 // .pipe(Option.map(getSpanInfo));
 
-export const startTimeMillisRef = FiberRef.unsafeMake(DateTime.unsafeMake(0));
+export const startTimeMillisRef = FiberRef.unsafeMake(Tuple.make( DateTime.unsafeMake(0), DateTime.unsafeMake(0)));
 
 export const parseMessage: (
   message: [string, ReadonlyRecord<string, unknown>] | [string] | string,
@@ -88,10 +89,17 @@ export const parseMessage: (
   Match.orElse((_) => [Inspectable.stringifyCircular(_), Option.none()]),
 );
 
+const getTimer = (refs: FiberRefs.FiberRefs) => {
+  const timer = FiberRefs.getOrDefault(refs, startTimeMillisRef);
+  console.log(timer);
+  return timer;
+};
+
 export const prettyLogger = Logger.make<unknown, string>((options) => {
   const { date, logLevel /* annotations, cause, context, fiberId, spans */ } = options;
   const [message, extra] = parseMessage(options.message as any);
 
+  console.log('!@#$', getTimer(options.context));
   return pipe(
     AnsiDoc.hsep([
       pipe(AnsiDoc.text(date.toISOString()), AnsiDoc.annotate(Ansi.bold)),
@@ -121,33 +129,64 @@ export const pretty = Effect.gen(function* () {
   const ref = yield* SynchronizedRef.make(Logger.defaultLogger);
   const latch = yield* Effect.makeLatch(false);
   const scope = yield* Effect.scope;
-  const stream = Stream.asyncEffect<void>((emit) =>
+  const stream = Stream.asyncEffect((emit) =>
     Effect.gen(function* () {
+      const logger = Logger.withConsoleLog(prettyLogger);
       yield* SynchronizedRef.set(
         ref,
         pipe(
-          Logger.map(Logger.withConsoleLog(prettyLogger), () => {
+          logger,
+          v=>v,
+          Logger.mapInputOptions((opts) => {
             emit(
-              Effect.gen(function* () {
-                yield* Effect.withFiberRuntime((fiberId) =>
-                  Effect.locallyScopedWith(startTimeMillisRef, (start) =>
-                    Option.getOrThrow(DateTime.make(fiberId.id().startTimeMillis)),
-                  ),
-                );
-              }).pipe(Effect.provideService(Scope.Scope, scope)),
-            );
-            // const locally =             console.log('emit');
-            // // eslint-disable-next-line no-void
-            // void emit(pipe(Console.log('!!', output), Effect.map(Chunk.make), (v) => v));
-            // // return 'asdf'; // output;
+              pipe(
+                Effect.succeed(Chunk.empty),
+                Effect.tap(() =>
+                  Effect.updateFiberRefs((fiberId, refs) => {
+                    console.log('emit');
+                    const [_, prev] = getTimer(refs);
+                    console.log('update', Tuple.make(prev, DateTime.unsafeFromDate(opts.date)));
+                    return FiberRefs.updateAs(refs, {
+                      fiberId,
+                      fiberRef: startTimeMillisRef,
+                      value: Tuple.make(prev, DateTime.unsafeFromDate(opts.date)),
+                    });
+                  }),
+                ),
+                // Effect.tap(() => {
+                //   console.log('exit');
+                // }),
+                // Effect.tap(() =>
+                //   Effect.getFiberRefs.pipe(
+                //     Effect.tap(() => {
+                //       console.log('>');
+                //     }),
+                //     Effect.tap((refs) => console.log(getTimer(refs))),
+                //     Effect.tap(() => {
+                //       console.log('<');
+                //     }),
+                //   ),
+                // ),
+                // Effect.sandbox,
+                // Effect.catchAllCause(Console.log),
+              ),
+            ).catch((error_) => {
+              console.error('!!!!e >', error_);
+            });
+            return opts;
           }),
+          v=>v
+          // const locally =             console.log('emit');
+          // // eslint-disable-next-line no-void
+          // void emit(pipe(Console.log('!!', output), Effect.map(Chunk.make), (v) => v));
+          // // return 'asdf'; // output;
         ),
-      );
-      yield* latch.open;
+      ),
+        yield* latch.open;
     }),
   );
 
-  const v = yield* pipe(stream, Stream.runDrain, Effect.fork);
+  const v0 = yield* pipe(stream, Stream.runDrain, Effect.fork);
 
   const v = pipe(SynchronizedRef.get(ref), latch.whenOpen, (logger) =>
     Logger.replaceEffect(Logger.defaultLogger, logger),
