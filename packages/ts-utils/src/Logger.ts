@@ -7,6 +7,7 @@ import {
   DateTime,
   Duration,
   Effect,
+  FiberId,
   FiberRef,
   FiberRefs,
   flow,
@@ -23,7 +24,6 @@ import {
   Scope,
   Stream,
   SynchronizedRef,
-  Tuple,
 } from 'effect';
 import type { ReadonlyRecord } from 'effect/Record';
 
@@ -77,7 +77,7 @@ const levelStyle: (level: LogLevel.LogLevel) => (doc: AnsiDoc.AnsiDoc) => AnsiDo
 // format the span info (if any)
 // .pipe(Option.map(getSpanInfo));
 
-export const startTimeMillisRef = FiberRef.unsafeMake(Tuple.make( DateTime.unsafeMake(0), DateTime.unsafeMake(0)));
+export const startTimeMillisRef = FiberRef.unsafeMake(DateTime.unsafeMake(0));
 
 export const parseMessage: (
   message: [string, ReadonlyRecord<string, unknown>] | [string] | string,
@@ -90,7 +90,7 @@ export const parseMessage: (
 );
 
 const getTimer = (refs: FiberRefs.FiberRefs) => {
-  const timer = FiberRefs.getOrDefault(refs, startTimeMillisRef);
+  const timer = FiberRefs.get(refs, startTimeMillisRef);
   console.log(timer);
   return timer;
 };
@@ -99,7 +99,7 @@ export const prettyLogger = Logger.make<unknown, string>((options) => {
   const { date, logLevel /* annotations, cause, context, fiberId, spans */ } = options;
   const [message, extra] = parseMessage(options.message as any);
 
-  console.log('!@#$', getTimer(options.context));
+  console.log('!!@#', getTimer(options.context));
   return pipe(
     AnsiDoc.hsep([
       pipe(AnsiDoc.text(date.toISOString()), AnsiDoc.annotate(Ansi.bold)),
@@ -126,6 +126,9 @@ export const prettyLogger = Logger.make<unknown, string>((options) => {
 
 // Logger.replaceEffect(Logger.defaultLogger, Effect.map(z, Logger.withConsoleLog));
 export const pretty = Effect.gen(function* () {
+  const runtime = yield* Effect.runtime();
+  const fiberId = yield* Effect.fiberId;
+  console.log(FiberId.isRuntime(fiberId))
   const ref = yield* SynchronizedRef.make(Logger.defaultLogger);
   const latch = yield* Effect.makeLatch(false);
   const scope = yield* Effect.scope;
@@ -136,37 +139,35 @@ export const pretty = Effect.gen(function* () {
         ref,
         pipe(
           logger,
-          v=>v,
+          (v) => v,
           Logger.mapInputOptions((opts) => {
             emit(
               pipe(
-                Effect.succeed(Chunk.empty),
+                Effect.succeed(Chunk.empty()),
                 Effect.tap(() =>
-                  Effect.updateFiberRefs((fiberId, refs) => {
+                  Runtime.updateFiberRefs(runtime, (refs) => {
                     console.log('emit');
-                    const [_, prev] = getTimer(refs);
-                    console.log('update', Tuple.make(prev, DateTime.unsafeFromDate(opts.date)));
                     return FiberRefs.updateAs(refs, {
                       fiberId,
                       fiberRef: startTimeMillisRef,
-                      value: Tuple.make(prev, DateTime.unsafeFromDate(opts.date)),
+                      value: DateTime.unsafeNow(),
                     });
                   }),
                 ),
-                // Effect.tap(() => {
-                //   console.log('exit');
-                // }),
-                // Effect.tap(() =>
-                //   Effect.getFiberRefs.pipe(
-                //     Effect.tap(() => {
-                //       console.log('>');
-                //     }),
-                //     Effect.tap((refs) => console.log(getTimer(refs))),
-                //     Effect.tap(() => {
-                //       console.log('<');
-                //     }),
-                //   ),
-                // ),
+                Effect.tap(() => {
+                  console.log('exit');
+                }),
+                Effect.tap(() =>
+                  Effect.getFiberRefs.pipe(
+                    Effect.tap(() => {
+                      console.log('>');
+                    }),
+                    Effect.flatMap(getTimer),
+                    Effect.tap(() => {
+                      console.log('<');
+                    }),
+                  ),
+                ),
                 // Effect.sandbox,
                 // Effect.catchAllCause(Console.log),
               ),
@@ -175,7 +176,7 @@ export const pretty = Effect.gen(function* () {
             });
             return opts;
           }),
-          v=>v
+          (v) => v,
           // const locally =             console.log('emit');
           // // eslint-disable-next-line no-void
           // void emit(pipe(Console.log('!!', output), Effect.map(Chunk.make), (v) => v));
