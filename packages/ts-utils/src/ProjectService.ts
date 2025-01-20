@@ -18,8 +18,8 @@ import {
 import type { Emit } from 'effect/StreamEmit';
 import ts from 'typescript';
 
-import * as ServerHost from './ServerHost.js';
 import * as Logger from './Logger.js';
+import * as ServerHost from './ServerHost.js';
 
 // TODO: latch logs
 // turn off pretty or make better default logger
@@ -39,8 +39,8 @@ const log: {
   2,
   (s: string, type: ts.server.Msg): Effect.Effect<Chunk.Chunk<never>, Option.Option<never>> =>
     Match.value(type).pipe(
-      Match.when(ts.server.Msg.Err, (type) => Logger.error( 'tsserver:error', s, { type })),
-      Match.when(ts.server.Msg.Perf, (type) => Logger.trace( 'tsserver:perf', s, { type })),
+      Match.when(ts.server.Msg.Err, (type) => Logger.error('tsserver:error', s, { type })),
+      Match.when(ts.server.Msg.Perf, (type) => Logger.trace('tsserver:perf', s, { type })),
       Match.orElse((type) => Logger.info('tsserver:info', s, { type })),
       Effect.map(() => Chunk.empty()),
     ),

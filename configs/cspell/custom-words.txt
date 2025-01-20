@@ -1,8 +1,14 @@
+# general
+ansi
+
 # airbnb
 airbnb
 
 # astal
 astal
+
+# catppuccin
+catppuccin
 
 # effect
 Ansi
