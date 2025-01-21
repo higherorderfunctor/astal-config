@@ -2,14 +2,9 @@ import * as catppuccin from '@catppuccin/palette';
 import { Ansi, AnsiDoc } from '@effect/printer-ansi';
 import { color } from 'bun';
 import {
-  Chunk,
-  Console,
   DateTime,
   Duration,
   Effect,
-  FiberId,
-  FiberRef,
-  FiberRefs,
   flow,
   HashMap,
   Inspectable,
@@ -20,10 +15,7 @@ import {
   Option,
   pipe,
   Predicate,
-  Runtime,
-  Scope,
-  Stream,
-  SynchronizedRef,
+  Schema as S,
 } from 'effect';
 import type { ReadonlyRecord } from 'effect/Record';
 
@@ -64,21 +56,6 @@ const levelStyle: (level: LogLevel.LogLevel) => (doc: AnsiDoc.AnsiDoc) => AnsiDo
     ),
 );
 
-// const timer = pipe(
-//   FiberRefs.get(context, startTimeMillisRef),
-//   Option.map((a) => DateTime.distanceDuration(a, DateTime.unsafeFromDate(date))),
-//   (v) => v,
-//   Option.map(Duration.format),
-//   (v) => v,
-//   // Option.map(Duration.toMillis),
-//   // Option.map((a) => `(${a} ${a.toString(10)} ns, ${DateTime.toEpochMillis(a)}, ${date}, ${date.getMilliseconds()})`)
-// );
-// .pipe(Option.flatMap(Context.getOption(Tracer.ParentSpan)))
-// format the span info (if any)
-// .pipe(Option.map(getSpanInfo));
-
-export const startTimeMillisRef = FiberRef.unsafeMake(DateTime.unsafeMake(0));
-
 export const parseMessage: (
   message: [string, ReadonlyRecord<string, unknown>] | [string] | string,
 ) => [string, Option.Option<ReadonlyRecord<string, unknown>>] = flow(
@@ -89,17 +66,21 @@ export const parseMessage: (
   Match.orElse((_) => [Inspectable.stringifyCircular(_), Option.none()]),
 );
 
-const getTimer = (refs: FiberRefs.FiberRefs) => {
-  const timer = FiberRefs.get(refs, startTimeMillisRef);
-  console.log(timer);
-  return timer;
-};
-
 export const prettyLogger = Logger.make<unknown, string>((options) => {
   const { date, logLevel /* annotations, cause, context, fiberId, spans */ } = options;
   const [message, extra] = parseMessage(options.message as any);
+  const metrics = HashMap.get(options.annotations, 'metrics');
 
-  console.log('!!@#', getTimer(options.context));
+  const dur = pipe(
+    Option.flatMap(
+      metrics,
+      S.decodeUnknownOption(S.Struct({ sinceLast: S.OptionFromSelf(S.DurationFromSelf) })),
+    ),
+    Option.flatMap(({ sinceLast }) => sinceLast),
+    Option.map((sinceLast) => `(+${Duration.format(sinceLast) ?? 0})`),
+    Option.getOrElse(() => '()'),
+  );
+  console.log(dur);
   return pipe(
     AnsiDoc.hsep([
       pipe(AnsiDoc.text(date.toISOString()), AnsiDoc.annotate(Ansi.bold)),
@@ -114,151 +95,24 @@ export const prettyLogger = Logger.make<unknown, string>((options) => {
     ]),
     AnsiDoc.render({ style: 'pretty' }),
   );
-
-  // return Record.getSomes({
-  //   extra,
-  //   level: Option.some(logLevel.label),
-  //   message,
-  //   timestamp: Option.some(date),
-  //   service: HashMap.get(annotations, 'service'),
-  // });
 });
 
-// Logger.replaceEffect(Logger.defaultLogger, Effect.map(z, Logger.withConsoleLog));
-export const pretty = Effect.gen(function* () {
-  const runtime = yield* Effect.runtime();
-  const fiberId = yield* Effect.fiberId;
-  console.log(FiberId.isRuntime(fiberId))
-  const ref = yield* SynchronizedRef.make(Logger.defaultLogger);
-  const latch = yield* Effect.makeLatch(false);
-  const scope = yield* Effect.scope;
-  const stream = Stream.asyncEffect((emit) =>
-    Effect.gen(function* () {
-      const logger = Logger.withConsoleLog(prettyLogger);
-      yield* SynchronizedRef.set(
-        ref,
-        pipe(
-          logger,
-          (v) => v,
-          Logger.mapInputOptions((opts) => {
-            emit(
-              pipe(
-                Effect.succeed(Chunk.empty()),
-                Effect.tap(() =>
-                  Runtime.updateFiberRefs(runtime, (refs) => {
-                    console.log('emit');
-                    return FiberRefs.updateAs(refs, {
-                      fiberId,
-                      fiberRef: startTimeMillisRef,
-                      value: DateTime.unsafeNow(),
-                    });
-                  }),
-                ),
-                Effect.tap(() => {
-                  console.log('exit');
-                }),
-                Effect.tap(() =>
-                  Effect.getFiberRefs.pipe(
-                    Effect.tap(() => {
-                      console.log('>');
-                    }),
-                    Effect.flatMap(getTimer),
-                    Effect.tap(() => {
-                      console.log('<');
-                    }),
-                  ),
-                ),
-                // Effect.sandbox,
-                // Effect.catchAllCause(Console.log),
-              ),
-            ).catch((error_) => {
-              console.error('!!!!e >', error_);
-            });
-            return opts;
-          }),
-          (v) => v,
-          // const locally =             console.log('emit');
-          // // eslint-disable-next-line no-void
-          // void emit(pipe(Console.log('!!', output), Effect.map(Chunk.make), (v) => v));
-          // // return 'asdf'; // output;
-        ),
-      ),
-        yield* latch.open;
+// export const pretty = Logger.replace(Logger.defaultLogger, pipe(prettyLogger, Logger.withConsoleLog));
+
+export const pretty = (() => {
+  let last = Option.none<DateTime.Utc>();
+  return Logger.replace(
+    Logger.defaultLogger,
+    Logger.mapInputOptions(Logger.withConsoleLog(prettyLogger), (opts) => {
+      const curr = DateTime.unsafeMake(opts.date);
+      const metrics = {
+        sinceLast: Option.map(last, (last) => DateTime.distanceDuration(last, curr)),
+      };
+      last = Option.some(curr);
+      return { ...opts, annotations: HashMap.set(opts.annotations, 'metrics', metrics) };
     }),
   );
-
-  const v0 = yield* pipe(stream, Stream.runDrain, Effect.fork);
-
-  const v = pipe(SynchronizedRef.get(ref), latch.whenOpen, (logger) =>
-    Logger.replaceEffect(Logger.defaultLogger, logger),
-  );
-  return v;
-  // ),
-  // Effect.flatMap((ref) => Effect.suspend(() => SynchronizedRef.get(ref))),
-  // (x) => Logger.replace(Logger.defaultLogger, x),
-  // (v) => v,
-  // Layer.unwrapEffect,
-  // (v) => v,
-}).pipe(Layer.unwrapScoped, (v) => v);
-// // export const jsonLinesConsole = Logger.replace(Logger.defaultLogger, pipe(structuredLogger, Logger.withConsoleLog));
-// const z = pipe(
-//   SynchronizedRef.make(structuredLogger),
-//   Effect.tap((ref) =>
-//     pipe(
-//       SynchronizedRef.get(ref),
-//       Effect.tap((log) => {
-//         const z = Stream.asyncEffect((emit) =>
-//           SynchronizedRef.set(
-//             ref,
-//             Logger.mapInputOptions(log, (opts) => {
-//               // console.log('@@@@@', 'here');
-//               emit(
-//                 pipe(
-//                   DateTime.make(opts.date),
-//                   Chunk.make,
-//                   Effect.succeed,
-//                   Effect.tap((d) => Console.log('!!!!!', d)),
-//                   (v) => v,
-//                   (d) => {
-//                     console.log('!!!!!', d);
-//                     return d;
-//                   },
-//                   (v) => v,
-//                   // Effect.succeed
-//                 ),
-//               );
-//               return opts;
-//             }),
-//           ),
-//         );
-//         return pipe(
-//           Stream.runDrain(z),
-//           (v) => v,
-//           Effect.fork,
-//           (v) => v,
-//         );
-//       }),
-//     ),
-//   ),
-//   // Logger.addEffect,
-//   Effect.flatMap(SynchronizedRef.get),
-//   (v) => v,
-// );
-// const v = Stream.asyncEffect((emit) => Effect.sync(() => Logger.make((ops) => emit(pipe(Console.log(''), Effect.map(Chunk.make))))));
-
-// const consoleTimerRef = FiberRef.unsafeMake(DateTime.unsafeMake(Number.NaN));
-
-// export const structured = Logger.replaceEffect(Logger.defaultLogger, pipe(z, Logger.withConsoleLog, v=>v));
-//
-// export const jsonLinesConsoleLogger: Logger.Logger<string, void> = Logger.make((options) => {
-//  const { log } = pipe(
-//    FiberRefs.get(options.context, DefaultServices.currentServices),
-//    Option.flatMap(Context.getOption(Console.Console)),
-//    Option.map((console) => console.unsafe),
-//    Option.getOrElse((): Console.UnsafeConsole => globalThis.console),
-//  );
-//  log(structuredLogger.log(options));
-// });
+})();
 
 export const trace: (service: string, message: string, annotations?: Record<string, unknown>) => Effect.Effect<void> = (
   service,
@@ -295,117 +149,3 @@ export const fatal: (service: string, message: string, annotations?: Record<stri
   message,
   annotations,
 ) => Effect.logFatal(message, { ...annotations, service });
-
-// export const withStartTimeMillis = <Rin, E, Rout>(layer: Layer.Layer<Rin, E, Rout>) =>
-//  Effect.withFiberRuntime<Layer.Layer<Rin, E, Rout>>((fiber) => {
-//    const fiberId = fiber.id();
-//    console.log(fiberId.startTimeMillis, '!!!', DateTime.make(fiberId.startTimeMillis));
-//    const locally = Layer.fiberRefLocallyScopedWith(startTimeMillisRef, () =>
-//      Option.getOrThrow(DateTime.make(fiberId.startTimeMillis)),
-//    );
-//    const z = layer.pipe(Layer.provide(locally));
-//    const u = Effect.succeed(z);
-//    return u;
-//  }).pipe(Effect.orDie);
-
-// export const jsonLinesConsoleLogger: Logger.Logger<unknown, void> = Logger.make((options) => {
-//   const { log } = pipe(
-//     FiberRefs.get(options.context, DefaultServices.currentServices),
-//     Option.flatMap(Context.getOption(Console.Console)),
-//     Option.map((console) => console.unsafe),
-//     Option.getOrElse((): Console.UnsafeConsole => globalThis.console),
-//   );
-//       log(Inspectable.stringifyCircular(jsonLinesLogger.log(options)));
-// });
-//
-// export const jsonLinesConsole = Logger.replace(Logger.defaultLogger, jsonLinesConsoleLogger);
-
-// export const jsonLinesLogger = Logger.make<unknown, Message>((options) => {
-//   const { annotations, cause, context, date, fiberId, logLevel, spans } = options;
-//   const [message, extra] = Match.value<[string, ReadonlyRecord<string, unknown>] | string>(options.message).pipe(
-//     Match.when(Predicate.isString, (message) => [Option.some(message), Option.none()]),
-//     Match.when([Predicate.isString], ([message, extra]) => [Option.some(message), Option.none()]),
-//     Match.when([Predicate.isString, Predicate.isRecord], ([message, extra]) => [
-//       Option.some(message),
-//       Option.some(extra),
-//     ]),
-//     Match.orElse((_) => [Option.some(Inspectable.stringifyCircular(_)), Option.none()]),
-//   );
-//   return Record.getSomes({
-//     extra,
-//     level: Option.some(logLevel.label),
-//     message,
-//     timestamp: Option.some(date),
-//     service: HashMap.get(annotations, 'service'),
-//   });
-// });
-//
-// export const jsonLines = Logger.replace(Logger.defaultLogger, jsonLinesLogger);
-//
-
-// export const startTimeMillisRef = FiberRef.unsafeMake(DateTime.unsafeMake(0));
-//
-// export const withStartTimeMillis = <Rin, E, Rout>(layer: Layer.Layer<Rin, E, Rout>) =>
-//   pipe(
-//     Effect.withFiberRuntime<Layer.Layer<Rin, E, Rout>>((fiber) => {
-//       const fiberId = fiber.id();
-//       const locally = Layer.locally(startTimeMillisRef, Option.getOrThrow(DateTime.make(fiberId.startTimeMillis)));
-//       const z = locally(layer);
-//       const u = Effect.succeed(z)
-//       return u
-//     }),
-//     v=>v
-//     // (v) => v,
-//     // (f) => {
-//     //   const ff = Effect.ap<Layer.Layer<never>, Layer.Layer<never>, never, never, never, never>(
-//     //     f,
-//     //     Logger.addEffect(Logger.defaultLogger, logger),
-//     //   );
-//     //   return ff;
-//     // },
-//     // (v) => v, // ((a) => Effect.succeed(Logger.pretty)),
-//   );
-// const z = Effect.ap(Effect.succeed(logger));
-
-//  <Message>(logger: Logger.Logger<Message, Message>) =>
-//  Stream.asyncEffect((emit) => {
-//    const logg = Logger.mapInputOptions(logger, (opts: Logger.Logger.Options<Message>) => {
-//      // const timer = pipe(
-//      //   FiberRefs.get(opts.context, consoleTimerRef),
-//      //   Option.getOrElse(() => initial),
-//      // );
-//     //  FiberRefs.updateAs(opts.context,
-//     //       FiberRefs.updateAs(opts.context, ));
-//     //    consoleTimerRef, ([_, prev]) => Tuple.make(prev, DateTime.unsafeFromDate(opts.date)))
-//      emit(pipe(
-//        Effect.withFiberRuntime((fiber) => {
-//          const fiberId = fiber.id();
-//        //  FiberRefs.updateAs(opts.context, fiber.id()
-//          const refs = FiberRefs.updateAs(
-//          opts.context,
-//           {
-//           fiberId,
-//           fiberRef: consoleTimerRef,
-//           value: DateTime.make(fiberId.startTimeMillis)
-//           }
-//          )
-//          return { ...opts, context: refs };
-//        )));
-//        //FiberRef.getAndUpdate(consoleTimerRef, ([_, prev]) => Tuple.make(prev, DateTime.unsafeFromDate(opts.date))),
-//          //const [,last] = fiber.id().getFiberRef(consoleTimerRef);
-//
-//          // const updated =fiber.id().;
-//          // FiberRefs.updateAs(opts.context, {
-//          // fiberId: fiber.id(),
-//          // fiberRef: consoleTimerRef,
-//          // value: Tuple.make(last, DateTime.unsafeFromDate(opts.date))
-//          // });
-//          // fiber.if
-//        ),
-//        Effect.andThen((refs) => ),
-//        Effect.andThen(Effect.setFiberRefs(consoleTimerRef)),
-//      ));
-//      return opts;
-//    })
-//    return logg
-//  })

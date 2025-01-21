@@ -65,7 +65,6 @@ Effect.gen(function* () {
   Effect.scoped,
   Effect.provide(NodeSdkLive),
   Effect.provide(BunContext.layer),
-  Effect.sandbox,
   Effect.tapError(flow(Inspectable.toJSON, Effect.logFatal)),
   Effect.provide(PrettyLogger.pretty),
   Effect.orDie,
