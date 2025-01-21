@@ -329,7 +329,7 @@ importers:
         specifier: 0.74.0
         version: 0.74.0(effect@3.12.5)
       '@effect/platform-bun':
-        specifier: ^0.54.0
+        specifier: 0.54.0
         version: 0.54.0(@effect/platform@0.74.0(effect@3.12.5))(effect@3.12.5)
       '@effect/platform-node-shared':
         specifier: 0.24.0
