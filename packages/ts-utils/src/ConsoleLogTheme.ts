@@ -11,7 +11,6 @@ import {
   HashMap,
   Inspectable,
   Layer,
-  Logger,
   LogLevel as _LogLevel,
   Match,
   Option,
@@ -23,43 +22,10 @@ import {
 } from 'effect';
 import { functionWithSpan } from 'effect/Effect';
 
+import type * as Logger from './Logger.js';
+import * as LogLevel from './LogLevel.js';
 import * as Palette from './Palette.js';
 import type * as PaletteError from './PaletteError/index.js';
-
-export namespace LogLevel {
-  export type LogLevel =
-    | _LogLevel.All
-    | _LogLevel.Debug
-    | _LogLevel.Error
-    | _LogLevel.Fatal
-    | _LogLevel.Info
-    | _LogLevel.None
-    | _LogLevel.Trace
-    | _LogLevel.Warning;
-
-  /**
-   * Re-types effect's log level's to more specific types instead of the sum type.
-   */
-  export const All = _LogLevel.Fatal as _LogLevel.All;
-  export const Fatal = _LogLevel.Fatal as _LogLevel.Fatal;
-  export const Error = _LogLevel.Error as _LogLevel.Error;
-  export const Warning = _LogLevel.Warning as _LogLevel.Warning;
-  export const Info = _LogLevel.Info as _LogLevel.Info;
-  export const Debug = _LogLevel.Debug as _LogLevel.Debug;
-  export const Trace = _LogLevel.Trace as _LogLevel.Trace;
-  export const None = _LogLevel.Trace as _LogLevel.None;
-
-  export interface LogLevels<T> {
-    [LogLevel.All.label]: T;
-    [LogLevel.Debug.label]: T;
-    [LogLevel.Error.label]: T;
-    [LogLevel.Fatal.label]: T;
-    [LogLevel.Info.label]: T;
-    [LogLevel.None.label]: T;
-    [LogLevel.Trace.label]: T;
-    [LogLevel.Warning.label]: T;
-  }
-}
 
 namespace Colorscheme {
   export const regular: Effect.Effect<
@@ -113,27 +79,38 @@ namespace Colorscheme {
     );
   }
 
-  type Apply<Options = {}> = Effect.Effect<
-    {
-      (
-        ...args: [Types.Equals<Options, {}>] extends [true] ? [options?: Options] : [options: Options]
-      ): (self: AnsiDoc.AnsiDoc) => AnsiDoc.AnsiDoc;
-      (
-        self: AnsiDoc.AnsiDoc,
-        ...args: [Types.Equals<Options, {}>] extends [true] ? [options?: Options] : [options: Options]
-      ): AnsiDoc.AnsiDoc;
-    },
-    PaletteError.PaletteColorError
-  >;
+  export type Apply<Options extends Logger.Logger.Options<string> = Logger.Logger.Options<string>> = {
+    (
+      ...args: [Types.Equals<Options, {}>] extends [true] ? [options?: Options] : [options: Options]
+    ): (self: AnsiDoc.AnsiDoc) => AnsiDoc.AnsiDoc;
+    (
+      self: AnsiDoc.AnsiDoc,
+      ...args: [Types.Equals<Options, {}>] extends [true] ? [options?: Options] : [options: Options]
+    ): AnsiDoc.AnsiDoc;
+  };
+  //   PaletteError.PaletteColorError
+  // >;
 
-  export const timestamp: Apply = Effect.succeed(
+  const apply = <A, E, R, Options extends Logger.Logger.Options<string> = Logger.Logger.Options<string>>(
+    f: (self: AnsiDoc.AnsiDoc, options: Options, use: A) => AnsiDoc.AnsiDoc,
+    use: Effect.Effect<A, E, R>,
+  ): Effect.Effect<Apply, E, R> =>
+    pipe(
+      use,
+      Effect.map(
+        (use): Colorscheme.Apply =>
+          Function.dual(2, (self: AnsiDoc.AnsiDoc, options: Options) => f(self, options, use)),
+      ),
+    );
+
+  export const timestamp: Effect.Effect<Apply> = Effect.succeed(
     Function.dual(2, (self: AnsiDoc.AnsiDoc, _options?: {}): AnsiDoc.AnsiDoc => AnsiDoc.annotate(self, Ansi.bold)),
   );
 
-  export const logLevel: Apply<{ logLevel: LogLevel.LogLevel }> = pipe(
+  export const logLevel: Effect.Effect<Colorscheme.Apply, PaletteError.PaletteColorError> = pipe(
     Mapping.logLevel,
     Effect.map(
-      (colorscheme): Effect.Effect.Success<Apply<{ logLevel: LogLevel.LogLevel }>> =>
+      (colorscheme): Colorscheme.Apply =>
         Function.dual(2, (self: AnsiDoc.AnsiDoc, options: { logLevel: LogLevel.LogLevel }) =>
           pipe(
             colorscheme[options.logLevel.label](self),
@@ -144,10 +121,10 @@ namespace Colorscheme {
     ),
   );
 
-  export const message: Apply<{ logLevel: LogLevel.LogLevel }> = pipe(
+  export const message: Effect.Effect<Colorscheme.Apply, PaletteError.PaletteColorError> = pipe(
     Mapping.message,
     Effect.map(
-      (colorscheme): Effect.Effect.Success<Apply<{ logLevel: LogLevel.LogLevel }>> =>
+      (colorscheme): Colorscheme.Apply =>
         Function.dual(
           2,
           (message: string, { logLevel }: { logLevel: LogLevel.LogLevel }): AnsiDoc.AnsiDoc =>
@@ -156,8 +133,8 @@ namespace Colorscheme {
     ),
   );
 
-// theme.style.annotations.metrics.distance.apply(distance),
-// AnsiDoc.annotate(Ansi.bold),
+  // theme.style.annotations.metrics.distance.apply(distance),
+  // AnsiDoc.annotate(Ansi.bold),
 }
 
 namespace format {
@@ -168,26 +145,31 @@ namespace format {
   export const message: (options: { message: string }) => AnsiDoc.Doc<never> = (options) =>
     pipe(options.message, AnsiDoc.text);
 
-  export namespace metrics {
-    export namespace distance {
-      export const format = (options: { metrics: { distance: Option.Option<Duration.Duration> } }): AnsiDoc.AnsiDoc =>
-        pipe(
-          Option.map(options.metrics.distance, (distance) =>
+  export namespace annotations {
+    export namespace logger {
+      export namespace metrics {
+        export namespace distance {
+          export const format = (options: {
+            metrics: { distance: Option.Option<Duration.Duration> };
+          }): AnsiDoc.AnsiDoc =>
             pipe(
-              // default effect formatter excludes the ms on 0
-              Option.liftPredicate(distance, Predicate.not(Duration.isZero)),
-              Option.map(flow(Duration.format, AnsiDoc.text)),
-              Option.getOrElse(() => AnsiDoc.text('0ms')),
-              (_) => AnsiDoc.hcat([AnsiDoc.text('+'), _]),
-              AnsiDoc.parenthesized,
-            ),
-          ),
-          Option.getOrElse(() => AnsiDoc.empty),
-        );
+              Option.map(options.metrics.distance, (distance) =>
+                pipe(
+                  // default effect formatter excludes the ms on 0
+                  Option.liftPredicate(distance, Predicate.not(Duration.isZero)),
+                  Option.map(flow(Duration.format, AnsiDoc.text)),
+                  Option.getOrElse(() => AnsiDoc.text('0ms')),
+                  (_) => AnsiDoc.hcat([AnsiDoc.text('+'), _]),
+                  AnsiDoc.parenthesized,
+                ),
+              ),
+              Option.getOrElse(() => AnsiDoc.empty),
+            );
+        }
+      }
     }
   }
 }
-
 
 export class LogTheme extends Effect.Service<LogTheme>()('LogTheme', {
   accessors: true,

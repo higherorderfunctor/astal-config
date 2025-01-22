@@ -7,7 +7,7 @@ import {
   flow,
   HashMap,
   Inspectable,
-  Logger,
+  Logger as _Logger,
   Match,
   Option,
   pipe,
@@ -17,6 +17,12 @@ import {
 import type { ReadonlyRecord } from 'effect/Record';
 
 import * as theme from './ConsoleLogTheme.js';
+import * as LogLevel from './LogLevel.js';
+
+export namespace Logger {
+export interface Options<out Message> extends Omit<_Logger.Logger.Options<Message>, 'logLevel'> {
+    logLevel: LogLevel.LogLevel
+}
 
 export interface Message {
   level: theme.LogLevel.LogLevel['label'];
