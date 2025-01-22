@@ -16,7 +16,7 @@ import {
 } from 'effect';
 import type { ReadonlyRecord } from 'effect/Record';
 
-import * as theme from './LoggerConsoleTheme.js';
+import * as theme from './ConsoleLogTheme.js';
 
 export interface Message {
   level: theme.LogLevel.LogLevel['label'];
