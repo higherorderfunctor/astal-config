@@ -1,26 +1,5 @@
-import * as catppuccin from '@catppuccin/palette';
 import { Ansi, AnsiDoc } from '@effect/printer-ansi';
-import { color } from 'bun';
-import type { Types } from 'effect';
-import {
-  DateTime,
-  Duration,
-  Effect,
-  flow,
-  Function,
-  HashMap,
-  Inspectable,
-  Layer,
-  LogLevel as _LogLevel,
-  Match,
-  Option,
-  pipe,
-  Predicate,
-  Record,
-  Schema as S,
-  Struct,
-} from 'effect';
-import { functionWithSpan } from 'effect/Effect';
+import { DateTime, Duration, Effect, flow, LogLevel as _LogLevel, Option, pipe, Predicate } from 'effect';
 
 import type * as Logger from './Logger.js';
 import * as LogLevel from './LogLevel.js';
@@ -43,94 +22,83 @@ namespace Colorscheme {
     PaletteError.PaletteColorError
   > = Palette.make(({ h, l, s }) => ({ h, l: l * 1.2, s }));
 
-  export namespace Mapping {
-    export const logLevel: Effect.Effect<
-      LogLevel.LogLevels<Palette.DocTransformer>,
-      PaletteError.PaletteColorError
-    > = pipe(
-      regular,
-      Effect.map((palette) => ({
-        [LogLevel.All.label]: palette.red,
-        [LogLevel.Debug.label]: palette.subtext1,
-        [LogLevel.Error.label]: palette.pink,
-        [LogLevel.Fatal.label]: palette.red,
-        [LogLevel.Info.label]: palette.green,
-        [LogLevel.None.label]: palette.subtext0,
-        [LogLevel.Trace.label]: palette.subtext0,
-        [LogLevel.Warning.label]: palette.yellow,
-      })),
-    );
-
-    export const message: Effect.Effect<
-      LogLevel.LogLevels<Palette.DocTransformer>,
-      PaletteError.PaletteColorError
-    > = pipe(
-      dark,
-      Effect.map((palette) => ({
-        [LogLevel.All.label]: palette.red,
-        [LogLevel.Debug.label]: palette.subtext1,
-        [LogLevel.Error.label]: palette.pink,
-        [LogLevel.Fatal.label]: palette.red,
-        [LogLevel.Info.label]: palette.green,
-        [LogLevel.None.label]: palette.subtext0,
-        [LogLevel.Trace.label]: palette.subtext0,
-        [LogLevel.Warning.label]: palette.yellow,
-      })),
-    );
-  }
-
-  export type Apply<Options extends Logger.Logger.Options<string> = Logger.Logger.Options<string>> = {
-    (
-      ...args: [Types.Equals<Options, {}>] extends [true] ? [options?: Options] : [options: Options]
-    ): (self: AnsiDoc.AnsiDoc) => AnsiDoc.AnsiDoc;
-    (
-      self: AnsiDoc.AnsiDoc,
-      ...args: [Types.Equals<Options, {}>] extends [true] ? [options?: Options] : [options: Options]
-    ): AnsiDoc.AnsiDoc;
-  };
-  //   PaletteError.PaletteColorError
-  // >;
-
-  const apply = <A, E, R, Options extends Logger.Logger.Options<string> = Logger.Logger.Options<string>>(
-    f: (self: AnsiDoc.AnsiDoc, options: Options, use: A) => AnsiDoc.AnsiDoc,
-    use: Effect.Effect<A, E, R>,
-  ): Effect.Effect<Apply, E, R> =>
-    pipe(
-      use,
-      Effect.map(
-        (use): Colorscheme.Apply =>
-          Function.dual(2, (self: AnsiDoc.AnsiDoc, options: Options) => f(self, options, use)),
-      ),
-    );
-
-  export const timestamp: Effect.Effect<Apply> = Effect.succeed(
-    Function.dual(2, (self: AnsiDoc.AnsiDoc, _options?: {}): AnsiDoc.AnsiDoc => AnsiDoc.annotate(self, Ansi.bold)),
+  export const logLevel: Effect.Effect<
+    LogLevel.LogLevels<Palette.DocTransformer>,
+    PaletteError.PaletteColorError
+  > = pipe(
+    regular,
+    Effect.map((palette) => ({
+      [LogLevel.All.label]: palette.red,
+      [LogLevel.Debug.label]: palette.subtext1,
+      [LogLevel.Error.label]: palette.pink,
+      [LogLevel.Fatal.label]: palette.red,
+      [LogLevel.Info.label]: palette.green,
+      [LogLevel.None.label]: palette.subtext0,
+      [LogLevel.Trace.label]: palette.subtext0,
+      [LogLevel.Warning.label]: palette.yellow,
+    })),
   );
 
-  export const logLevel: Effect.Effect<Colorscheme.Apply, PaletteError.PaletteColorError> = pipe(
-    Mapping.logLevel,
-    Effect.map(
-      (colorscheme): Colorscheme.Apply =>
-        Function.dual(2, (self: AnsiDoc.AnsiDoc, options: { logLevel: LogLevel.LogLevel }) =>
-          pipe(
-            colorscheme[options.logLevel.label](self),
-            AnsiDoc.annotate(Ansi.bold),
-            AnsiDoc.annotate(Ansi.italicized),
-          ),
-        ),
-    ),
+  export const message: Effect.Effect<
+    LogLevel.LogLevels<Palette.DocTransformer>,
+    PaletteError.PaletteColorError
+  > = pipe(
+    dark,
+    Effect.map((palette) => ({
+      [LogLevel.All.label]: palette.red,
+      [LogLevel.Debug.label]: palette.subtext1,
+      [LogLevel.Error.label]: palette.pink,
+      [LogLevel.Fatal.label]: palette.red,
+      [LogLevel.Info.label]: palette.green,
+      [LogLevel.None.label]: palette.subtext0,
+      [LogLevel.Trace.label]: palette.subtext0,
+      [LogLevel.Warning.label]: palette.yellow,
+    })),
   );
+}
 
-  export const message: Effect.Effect<Colorscheme.Apply, PaletteError.PaletteColorError> = pipe(
-    Mapping.message,
-    Effect.map(
-      (colorscheme): Colorscheme.Apply =>
-        Function.dual(
-          2,
-          (message: string, { logLevel }: { logLevel: LogLevel.LogLevel }): AnsiDoc.AnsiDoc =>
-            pipe(colorscheme[logLevel.label](AnsiDoc.text(message))),
+export namespace style {
+  export type Apply<E = never, R = never> = Effect.Effect<
+    (self: AnsiDoc.AnsiDoc, options: Logger.Logger.Options<string>) => AnsiDoc.AnsiDoc,
+    E,
+    R
+  >;
+
+  const apply: {
+    // overload 1
+    <E = never, R = never>(
+      f: (self: AnsiDoc.AnsiDoc, options: Logger.Logger.Options<string>) => AnsiDoc.AnsiDoc,
+    ): Apply<E, R>;
+    // overload 2
+    <A = never, E = never, R = never>(
+      f: (self: AnsiDoc.AnsiDoc, options: Logger.Logger.Options<string>, use: A) => AnsiDoc.AnsiDoc,
+      use: Effect.Effect<A, E, R>,
+    ): Apply<E, R>;
+  } =
+    // implementation
+    <A = never, E = never, R = never>(
+      f: (self: AnsiDoc.AnsiDoc, options: Logger.Logger.Options<string>, use?: A) => AnsiDoc.AnsiDoc,
+      use?: Effect.Effect<A, E, R>,
+    ): Apply<E, R> =>
+      pipe(
+        Effect.liftPredicate(use, Predicate.isNotUndefined, () => Effect.succeed(null)),
+        Effect.merge,
+        Effect.flatten,
+        Effect.map(
+          (use) => (self: AnsiDoc.AnsiDoc, options: Logger.Logger.Options<string>) =>
+            use ? f(self, options, use) : f(self, options),
         ),
-    ),
+      );
+
+  export const timestamp = apply(AnsiDoc.annotate(Ansi.bold));
+  export const logLevel = apply(
+    (self, options, colorscheme) =>
+      pipe(colorscheme[options.logLevel.label](self), AnsiDoc.annotate(Ansi.bold), AnsiDoc.annotate(Ansi.italicized)),
+    Colorscheme.logLevel,
+  );
+  export const message = apply(
+    (self, options, colorscheme) => pipe(colorscheme[options.logLevel.label](self)),
+    Colorscheme.message,
   );
 
   // theme.style.annotations.metrics.distance.apply(distance),
@@ -175,12 +143,12 @@ export class LogTheme extends Effect.Service<LogTheme>()('LogTheme', {
   accessors: true,
   effect: Effect.gen(function* () {
     return {
-      colorscheme: yield* Effect.all({
-        logLevel: Colorscheme.logLevel,
-        message: Colorscheme.message,
-        timestamp: Colorscheme.timestamp,
-      }),
       format,
+      style: yield* Effect.all({
+        logLevel: style.logLevel,
+        message: style.message,
+        timestamp: style.timestamp,
+      }),
     };
   }),
 }) {}
